@@ -93,7 +93,7 @@ export class mdxPreview extends TextFileView {
       })
       compiledBody = String(compiled).replace(/<\/script/gi, '<\\/script')
     } catch (err) {
-      compiledBody = `throw new Error(${JSON.stringify(String(err))})`
+      compiledBody = `throw new Error(${JSON.stringify(String(err))})`.replace(/<\/script/gi, '<\\/script')
     }
 
     // A newer render started while we were compiling — discard this result.
