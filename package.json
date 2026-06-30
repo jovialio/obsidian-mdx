@@ -1,6 +1,6 @@
 {
   "name": "mdx-preview",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Preview MDX in Obsidian, with support for Code Hike",
   "main": "main.js",
   "scripts": {
