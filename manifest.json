@@ -1,6 +1,6 @@
 {
   "id": "mdx-preview",
-  "name": "MDX Preview",
+  "name": "MDX Editor",
   "version": "0.1.2",
   "minAppVersion": "1.0.0",
   "description": "Preview MDX files with support for Code Hike.",
