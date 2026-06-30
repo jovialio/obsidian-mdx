@@ -5,10 +5,17 @@ import rendererScript from 'renderer-script'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
+// Session-scoped — resets on each Obsidian restart / plugin reload.
+// Requires the user to explicitly enable rendering once per session before
+// any MDX JavaScript runs, since allow-scripts lets iframe code make
+// outbound requests even though vault/parent APIs are blocked.
+let consentGiven = false
+
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
   private _content = ''
   private _renderTimer: ReturnType<typeof setTimeout> | null = null
+  private _renderGeneration = 0
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -29,7 +36,6 @@ export class mdxPreview extends TextFileView {
   setViewData(data: string, clear: boolean): void {
     this._content = data
     if (this._renderTimer) clearTimeout(this._renderTimer)
-    // Immediate render on initial load, debounced on subsequent changes
     this._renderTimer = setTimeout(() => this.render(), clear ? 0 : 400)
   }
 
@@ -41,7 +47,39 @@ export class mdxPreview extends TextFileView {
     }
   }
 
+  private showConsentBanner(): void {
+    const container = this.containerEl.children[1] as HTMLElement
+    if (this.iframe) {
+      this.iframe.remove()
+      this.iframe = null
+    }
+    container.empty()
+
+    const banner = container.createDiv({ cls: 'mdx-consent' })
+    banner.style.cssText = 'padding:24px;max-width:480px;'
+    banner.createEl('strong', { text: 'MDX executes JavaScript' })
+    banner.createEl('p', {
+      text: 'Scripts run in a sandboxed iframe with no access to your vault or Obsidian APIs. However, they can make outbound network requests. Only preview files you trust.',
+    })
+    const btn = banner.createEl('button', { text: 'Enable MDX Preview' })
+    btn.style.cssText = 'margin-top:8px;'
+    btn.addEventListener('click', () => {
+      consentGiven = true
+      banner.remove()
+      this.render()
+    })
+  }
+
   async render() {
+    if (!consentGiven) {
+      this.showConsentBanner()
+      return
+    }
+
+    // Increment generation so any in-flight compile from a previous call
+    // can detect it has been superseded and skip the DOM update.
+    const generation = ++this._renderGeneration
+
     const chConfig = {
       components: { code: 'Code' },
       syntaxHighlighting: { theme: 'github-dark' },
@@ -61,6 +99,9 @@ export class mdxPreview extends TextFileView {
         `throw new Error(${JSON.stringify(String(err))})`
       ).replace(/<\/script/gi, '<\\/script')
     }
+
+    // A newer render started while we were compiling — discard this result.
+    if (generation !== this._renderGeneration) return
 
     const srcdoc = `<!DOCTYPE html>
 <html>
