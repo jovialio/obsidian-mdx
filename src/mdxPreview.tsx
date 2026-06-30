@@ -81,6 +81,7 @@ export class mdxPreview extends ItemView {
   }
   </script>
   <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <link rel="stylesheet" href="https://esm.sh/@code-hike/mdx@0.8.3/dist/index.css">
   <style>
     body { margin: 0; padding: 16px; font-family: var(--font-text, sans-serif); }
     .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
