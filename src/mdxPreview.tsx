@@ -1,12 +1,11 @@
 import { ItemView, ViewStateResult } from 'obsidian'
 import React from 'react'
 import * as runtime from 'react/jsx-runtime'
-// @ts-ignore
+// @ts-expect-error — @types/react-dom doesn't export /client sub-path types
 import ReactDOM from 'react-dom/client'
 import { evaluate } from '@mdx-js/mdx'
 import { remarkCodeHike } from '@code-hike/mdx'
 import { CH } from '@code-hike/mdx/components'
-// @ts-ignore
 import theme from 'shiki/themes/github-dark.json'
 
 export const MDX_PREVIEW = 'mdx-preview'
