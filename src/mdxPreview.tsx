@@ -1,70 +1,67 @@
-import { ItemView, ViewStateResult } from 'obsidian'
+import { TextFileView, WorkspaceLeaf } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
-export type MDXPreviewState = {
-  data: string
-  basename: string
-}
-
-export class mdxPreview extends ItemView {
+export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
-  state: MDXPreviewState = {
-    data: '',
-    basename: '',
-  }
+  private _content = ''
+  private _renderTimer: ReturnType<typeof setTimeout> | null = null
 
-  setState(state: MDXPreviewState, _result: ViewStateResult): Promise<void> {
-    this.state = state
-    return this.render()
-  }
-
-  getState() {
-    return this.state
-  }
-
-  clear(): void {}
-
-  getDisplayText(): string {
-    return 'MDX Preview'
+  constructor(leaf: WorkspaceLeaf) {
+    super(leaf)
   }
 
   getViewType(): string {
     return MDX_PREVIEW
   }
 
-  async render() {
-    const fileContent = this.state.data
+  getDisplayText(): string {
+    return this.file?.basename ?? 'MDX Preview'
+  }
 
+  getViewData(): string {
+    return this._content
+  }
+
+  setViewData(data: string, clear: boolean): void {
+    this._content = data
+    if (this._renderTimer) clearTimeout(this._renderTimer)
+    // Immediate render on initial load, debounced on subsequent changes
+    this._renderTimer = setTimeout(() => this.render(), clear ? 0 : 400)
+  }
+
+  clear(): void {
+    this._content = ''
+    if (this.iframe) {
+      this.iframe.remove()
+      this.iframe = null
+    }
+  }
+
+  async render() {
     const chConfig = {
       components: { code: 'Code' },
       syntaxHighlighting: { theme: 'github-dark' },
     }
 
-    // Compile MDX to a function-body string in the plugin process — no code runs here.
-    // remarkCodeHike pre-highlights code blocks at compile time (no shiki/fs on mobile).
-    const compiled = await compile(fileContent, {
-      outputFormat: 'function-body',
-      remarkPlugins: [[remarkCodeHike, chConfig]],
-      recmaPlugins: [[recmaCodeHike, chConfig]],
-      development: false,
-    })
+    let compiledJson: string
+    try {
+      const compiled = await compile(this._content, {
+        outputFormat: 'function-body',
+        remarkPlugins: [[remarkCodeHike, chConfig]],
+        recmaPlugins: [[recmaCodeHike, chConfig]],
+        development: false,
+      })
+      compiledJson = JSON.stringify(String(compiled)).replace(/<\/script/gi, '<\\/script')
+    } catch (err) {
+      compiledJson = JSON.stringify(
+        `throw new Error(${JSON.stringify(String(err))})`
+      ).replace(/<\/script/gi, '<\\/script')
+    }
 
-    // JSON-encode the compiled body and escape </script to prevent the HTML parser
-    // from closing the <script type="application/json"> data block prematurely.
-    // JSON's \/ decodes to / so the payload is still valid when parsed in the iframe.
-    const compiledJson = JSON.stringify(String(compiled)).replace(
-      /<\/script/gi,
-      '<\\/script'
-    )
-
-    // The iframe is sandboxed with allow-scripts only — no allow-same-origin —
-    // so it has a null origin and cannot reach the parent window, the vault,
-    // or any Node.js / Electron API. All renderer code (React, ReactDOM, Code Hike)
-    // is bundled locally at build time; no CDN requests are made at runtime.
     const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
@@ -92,11 +89,11 @@ export class mdxPreview extends ItemView {
     this.iframe.setAttribute('sandbox', 'allow-scripts')
     this.iframe.srcdoc = srcdoc
     this.iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;'
-
     container.appendChild(this.iframe)
   }
 
   async onClose() {
+    if (this._renderTimer) clearTimeout(this._renderTimer)
     if (this.iframe) {
       this.iframe.remove()
       this.iframe = null
