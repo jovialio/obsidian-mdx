@@ -6,9 +6,6 @@ Preview [MDX](https://github.com/mdx-js/mdx/) in Obsidian, with support for [Cod
 
 https://obsidian.md/plugins?search=yulei%20chen
 
-## Requirements
-
-- **Internet access** is required to render previews. The plugin loads React and Code Hike from [esm.sh](https://esm.sh) inside a sandboxed iframe at preview time. Offline vaults will not be able to render MDX content.
 
 ## Getting Started
 
