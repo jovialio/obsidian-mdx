@@ -32,8 +32,11 @@ jobs:
             src:
               - 'src/**'
               - 'package.json'
+              - 'pnpm-lock.yaml'
               - 'tsconfig.json'
               - 'esbuild.config.mjs'
+              - 'tests/**'
+              - 'playwright.config.ts'
 
   lint-and-build:
     name: Lint and build
