@@ -1,6 +1,12 @@
+import React from 'react'
 import * as runtime from 'react/jsx-runtime'
 import { createRoot } from 'react-dom/client'
-import { CH } from '@code-hike/mdx/components'
+import { Pre } from 'codehike/code'
+import type { HighlightedCode } from 'codehike/code'
+
+function Code({ codeblock }: { codeblock: HighlightedCode }) {
+  return React.createElement(Pre, { code: codeblock })
+}
 
 try {
   const body = JSON.parse(
@@ -9,7 +15,7 @@ try {
   const fn = new Function(body) as (...args: unknown[]) => Record<string, unknown>
   const { default: MDXContent } = fn({ ...runtime })
   createRoot(document.getElementById('root') as Element).render(
-    (MDXContent as (props: Record<string, unknown>) => unknown)({ components: { CH } }) as never
+    (MDXContent as (props: Record<string, unknown>) => unknown)({ components: { Code } }) as never
   )
 } catch (err) {
   ;(document.getElementById('root') as HTMLElement).innerHTML =

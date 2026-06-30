@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test'
 import { compile } from '@mdx-js/mdx'
+import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import esbuild from 'esbuild'
-import { readFileSync } from 'fs'
 
 let rendererScript = ''
-let codeHikeCss = ''
+
+const chConfig = {
+  components: { code: 'Code' },
+  syntaxHighlighting: { theme: 'github-dark' },
+}
 
 test.beforeAll(async () => {
   const result = await esbuild.build({
@@ -17,12 +21,13 @@ test.beforeAll(async () => {
     treeShaking: true,
   })
   rendererScript = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
-  codeHikeCss = readFileSync('node_modules/@code-hike/mdx/dist/index.css', 'utf-8')
 })
 
 async function buildSrcdoc(mdx: string): Promise<string> {
   const compiled = await compile(mdx, {
     outputFormat: 'function-body',
+    remarkPlugins: [[remarkCodeHike, chConfig]],
+    recmaPlugins: [[recmaCodeHike, chConfig]],
     development: false,
   })
 
@@ -35,7 +40,6 @@ async function buildSrcdoc(mdx: string): Promise<string> {
 <html>
 <head>
   <meta charset="utf-8">
-  <style>${codeHikeCss}</style>
   <style>
     body { margin: 0; padding: 16px; }
     .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
@@ -107,6 +111,8 @@ test.describe('MDX Preview rendering', () => {
     const mdx = 'This contains `</script>` in inline code.'
     const compiled = await compile(mdx, {
       outputFormat: 'function-body',
+      remarkPlugins: [[remarkCodeHike, chConfig]],
+      recmaPlugins: [[recmaCodeHike, chConfig]],
       development: false,
     })
 

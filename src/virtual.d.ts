@@ -10,7 +10,3 @@ declare module 'renderer-script' {
   export default content
 }
 
-declare module 'code-hike-css' {
-  const content: string
-  export default content
-}

@@ -30,13 +30,14 @@
     "typescript": "4.7.4"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "dependencies": {
-    "@code-hike/mdx": "^0.8.3",
     "@mdx-js/mdx": "^2.3.0",
+    "codehike": "1.1.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "shiki": "^0.14.2"
+    "react-dom": "^18.2.0"
   }
 }

@@ -1,9 +1,7 @@
 import { ItemView, ViewStateResult } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
-import { remarkCodeHike } from '@code-hike/mdx'
-import theme from 'shiki/themes/github-dark.json'
+import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
-import codeHikeCss from 'code-hike-css'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
@@ -41,18 +39,17 @@ export class mdxPreview extends ItemView {
   async render() {
     const fileContent = this.state.data
 
-    // Compile MDX to a function-body string in the plugin process — no code runs here
+    const chConfig = {
+      components: { code: 'Code' },
+      syntaxHighlighting: { theme: 'github-dark' },
+    }
+
+    // Compile MDX to a function-body string in the plugin process — no code runs here.
+    // remarkCodeHike pre-highlights code blocks at compile time (no shiki/fs on mobile).
     const compiled = await compile(fileContent, {
       outputFormat: 'function-body',
-      remarkPlugins: [
-        [
-          remarkCodeHike,
-          {
-            theme,
-            autoImport: false,
-          },
-        ],
-      ],
+      remarkPlugins: [[remarkCodeHike, chConfig]],
+      recmaPlugins: [[recmaCodeHike, chConfig]],
       development: false,
     })
 
@@ -72,7 +69,6 @@ export class mdxPreview extends ItemView {
 <html>
 <head>
   <meta charset="utf-8">
-  <style>${codeHikeCss}</style>
   <style>
     body { margin: 0; padding: 16px; font-family: var(--font-text, sans-serif); }
     .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
