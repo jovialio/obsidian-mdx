@@ -1,7 +1,7 @@
 {
   "id": "obsidian-mdx",
   "name": "MDX",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.0.0",
   "description": "Preview MDX in Obsidian, with support for Code Hike.",
   "author": "jovialio",
