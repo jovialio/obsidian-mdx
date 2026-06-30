@@ -1,5 +1,24 @@
 import { test, expect } from '@playwright/test'
 import { compile } from '@mdx-js/mdx'
+import esbuild from 'esbuild'
+import { readFileSync } from 'fs'
+
+let rendererScript = ''
+let codeHikeCss = ''
+
+test.beforeAll(async () => {
+  const result = await esbuild.build({
+    entryPoints: ['src/renderer.tsx'],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2020',
+    write: false,
+    treeShaking: true,
+  })
+  rendererScript = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+  codeHikeCss = readFileSync('node_modules/@code-hike/mdx/dist/index.css', 'utf-8')
+})
 
 async function buildSrcdoc(mdx: string): Promise<string> {
   const compiled = await compile(mdx, {
@@ -16,31 +35,16 @@ async function buildSrcdoc(mdx: string): Promise<string> {
 <html>
 <head>
   <meta charset="utf-8">
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "https://esm.sh/react@18.2.0",
-      "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
-      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
-    }
-  }
-  </script>
-  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <style>${codeHikeCss}</style>
+  <style>
+    body { margin: 0; padding: 16px; }
+    .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
+  </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module">
-    import * as runtime from 'react/jsx-runtime'
-    import ReactDOM from 'react-dom/client'
-    try {
-      const body = JSON.parse(document.getElementById('mdx-compiled').textContent)
-      const fn = new Function(body)
-      const { default: MDXContent } = fn({ ...runtime })
-      ReactDOM.createRoot(document.getElementById('root')).render(MDXContent({}))
-    } catch (err) {
-      document.getElementById('root').innerHTML = '<pre id="error">' + String(err) + '</pre>'
-    }
-  </script>
+  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <script>${rendererScript}</script>
 </body>
 </html>`
 }
@@ -77,11 +81,26 @@ test.describe('MDX Preview rendering', () => {
     await expect(iframe.locator('li')).toHaveCount(3, { timeout: 30_000 })
   })
 
-  test('shows error message for invalid MDX', async ({ page }) => {
-    // Unclosed JSX tag — compile will throw
-    await expect(
-      compile('<Broken', { outputFormat: 'function-body', development: false })
-    ).rejects.toThrow()
+  test('shows error message when renderer receives invalid data', async ({ page }) => {
+    const badSrcdoc = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body>
+  <div id="root"></div>
+  <script id="mdx-compiled" type="application/json">NOT_VALID_JSON</script>
+  <script>${rendererScript}</script>
+</body>
+</html>`
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, badSrcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.mdx-error')).toContainText('MDX Error', { timeout: 30_000 })
   })
 
   test('escapes </script in compiled output', async () => {

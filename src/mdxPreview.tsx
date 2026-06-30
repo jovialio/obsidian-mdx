@@ -2,6 +2,8 @@ import { ItemView, ViewStateResult } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike } from '@code-hike/mdx'
 import theme from 'shiki/themes/github-dark.json'
+import rendererScript from 'renderer-script'
+import codeHikeCss from 'code-hike-css'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
@@ -64,24 +66,13 @@ export class mdxPreview extends ItemView {
 
     // The iframe is sandboxed with allow-scripts only — no allow-same-origin —
     // so it has a null origin and cannot reach the parent window, the vault,
-    // or any Node.js / Electron API. React and Code Hike are loaded from CDN
-    // because the sandboxed context cannot access the plugin's bundled modules.
+    // or any Node.js / Electron API. All renderer code (React, ReactDOM, Code Hike)
+    // is bundled locally at build time; no CDN requests are made at runtime.
     const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "https://esm.sh/react@18.2.0",
-      "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
-      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-      "@code-hike/mdx/components": "https://esm.sh/@code-hike/mdx@0.8.3/components"
-    }
-  }
-  </script>
-  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
-  <link rel="stylesheet" href="https://esm.sh/@code-hike/mdx@0.8.3/dist/index.css">
+  <style>${codeHikeCss}</style>
   <style>
     body { margin: 0; padding: 16px; font-family: var(--font-text, sans-serif); }
     .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
@@ -89,22 +80,8 @@ export class mdxPreview extends ItemView {
 </head>
 <body>
   <div id="root"></div>
-  <script type="module">
-    import * as runtime from 'react/jsx-runtime'
-    import ReactDOM from 'react-dom/client'
-    import { CH } from '@code-hike/mdx/components'
-
-    try {
-      const body = JSON.parse(document.getElementById('mdx-compiled').textContent)
-      const fn = new Function(body)
-      const { default: MDXContent } = fn({ ...runtime })
-      const root = ReactDOM.createRoot(document.getElementById('root'))
-      root.render(MDXContent({ components: { CH } }))
-    } catch (err) {
-      document.getElementById('root').innerHTML =
-        '<pre class="mdx-error">MDX Error: ' + String(err) + '</pre>'
-    }
-  </script>
+  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <script>${rendererScript}</script>
 </body>
 </html>`
 
