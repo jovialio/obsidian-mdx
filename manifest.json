@@ -3,7 +3,7 @@
   "name": "MDX Preview",
   "version": "0.1.1",
   "minAppVersion": "1.0.0",
-  "description": "Preview MDX in Obsidian, with support for Code Hike.",
+  "description": "Preview MDX files with support for Code Hike.",
   "author": "jovialio",
   "authorUrl": "https://github.com/jovialio",
   "isDesktopOnly": false
