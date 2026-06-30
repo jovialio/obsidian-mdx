@@ -4,7 +4,11 @@ Preview [MDX](https://github.com/mdx-js/mdx/) in Obsidian, with support for [Cod
 
 ## Installation
 
-Search for **MDX Preview** in Obsidian's Community Plugins browser, or install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases).
+Install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases):
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.
+2. Copy them into `.obsidian/plugins/mdx-preview/` inside your vault.
+3. Enable the plugin in **Settings → Community Plugins**.
 
 ## Usage
 
