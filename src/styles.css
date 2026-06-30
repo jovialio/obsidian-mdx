@@ -1,2 +1,15 @@
-/* Plugin styles load in Obsidian's global context.
-   Code Hike CSS is inlined inside the sandboxed iframe — nothing needed here. */
+.mdx-consent {
+  padding: 24px;
+  max-width: 480px;
+}
+
+.mdx-consent button {
+  margin-top: 8px;
+}
+
+.mdx-preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}

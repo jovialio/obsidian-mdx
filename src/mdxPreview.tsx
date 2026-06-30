@@ -14,7 +14,7 @@ let consentGiven = false
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
   private _content = ''
-  private _renderTimer: ReturnType<typeof setTimeout> | null = null
+  private _renderTimer: number | null = null
   private _renderGeneration = 0
 
   constructor(leaf: WorkspaceLeaf) {
@@ -35,8 +35,8 @@ export class mdxPreview extends TextFileView {
 
   setViewData(data: string, clear: boolean): void {
     this._content = data
-    if (this._renderTimer) clearTimeout(this._renderTimer)
-    this._renderTimer = setTimeout(() => this.render(), clear ? 0 : 400)
+    if (this._renderTimer) window.clearTimeout(this._renderTimer)
+    this._renderTimer = window.setTimeout(() => this.render(), clear ? 0 : 400)
   }
 
   clear(): void {
@@ -56,17 +56,15 @@ export class mdxPreview extends TextFileView {
     container.empty()
 
     const banner = container.createDiv({ cls: 'mdx-consent' })
-    banner.style.cssText = 'padding:24px;max-width:480px;'
     banner.createEl('strong', { text: 'MDX executes JavaScript' })
     banner.createEl('p', {
       text: 'Scripts run in a sandboxed iframe with no access to your vault or Obsidian APIs. However, they can make outbound network requests. Only preview files you trust.',
     })
     const btn = banner.createEl('button', { text: 'Enable MDX Preview' })
-    btn.style.cssText = 'margin-top:8px;'
     btn.addEventListener('click', () => {
       consentGiven = true
       banner.remove()
-      this.render()
+      void this.render()
     })
   }
 
@@ -126,15 +124,16 @@ export class mdxPreview extends TextFileView {
       this.iframe = null
     }
 
-    this.iframe = document.createElement('iframe')
-    this.iframe.setAttribute('sandbox', 'allow-scripts')
-    this.iframe.srcdoc = srcdoc
-    this.iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;'
-    container.appendChild(this.iframe)
+    const iframe = activeDocument.createElement('iframe')
+    iframe.setAttribute('sandbox', 'allow-scripts')
+    iframe.srcdoc = srcdoc
+    iframe.addClass('mdx-preview-iframe')
+    this.iframe = iframe
+    container.appendChild(iframe)
   }
 
   async onClose() {
-    if (this._renderTimer) clearTimeout(this._renderTimer)
+    if (this._renderTimer) window.clearTimeout(this._renderTimer)
     if (this.iframe) {
       this.iframe.remove()
       this.iframe = null
