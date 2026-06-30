@@ -1,32 +1,29 @@
-# Obsidian MDX
+# MDX Preview
 
 Preview [MDX](https://github.com/mdx-js/mdx/) in Obsidian, with support for [Code Hike](https://github.com/code-hike/codehike).
 
 ## Installation
 
-Search for **MDX** in Obsidian's Community Plugins browser, or install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases).
+Install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases):
 
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.
+2. Copy them into `.obsidian/plugins/mdx-preview/` inside your vault.
+3. Enable the plugin in **Settings → Community Plugins**.
 
-## Getting Started
+## Usage
 
-### Usage
+1. Create or open any file with a `.mdx` extension — it opens automatically in the preview view.
+2. On first open, confirm the security prompt. MDX files contain executable JavaScript; the plugin asks once per session before rendering.
+3. Edit the file in a separate pane (source mode recommended) and the preview updates as you type.
 
-1. Write MDX syntax in a file with a `.mdx` extension (source mode is recommended).
-2. Press `ctrl/cmd + p` to open the Command Palette.
-3. Type `mdx: preview` in the Command Palette and press `Enter`.
-4. Confirm the security warning — MDX files contain executable JavaScript, so the plugin asks for confirmation before rendering.
+### Code Hike support
 
-![code-hike-example](https://github.com/yuleicul/obsidian-mdx/assets/27288153/a28bea0c-610a-4282-ad89-89fccc504f8a)
-
-### Support for Codehike
-
-This plugin also provides added support for Code Hike.
-If you want to try it out, you can copy [this example](https://github.com/code-hike/codehike/blob/next/examples/vite/src/hello.mdx) to Obsidian.
+The plugin has built-in support for [Code Hike](https://codehike.org). To try it out, copy [this example](https://github.com/code-hike/codehike/blob/next/examples/vite/src/hello.mdx) into a `.mdx` file in your vault.
 
 ## Contributing
 
-If you would like to contribute to this project, please open an issue or submit a pull request.
+Issues and pull requests are welcome at [jovialio/obsidian-mdx](https://github.com/jovialio/obsidian-mdx).
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT — see the [LICENSE](LICENSE) file for details.

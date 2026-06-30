@@ -8,26 +8,26 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
-// This module runs inside a sandboxed iframe (null origin, no Obsidian APIs).
-// `document` is correct here — activeDocument applies only to Obsidian plugin context.
-// `new Function` is required to execute the compiled MDX function-body output.
-/* eslint-disable no-undef, @typescript-eslint/no-implied-eval */
+// This file runs inside a sandboxed iframe (sandbox="allow-scripts", null origin).
+// It has no access to the Obsidian plugin host or its globals. `activeDocument`
+// does not exist in this context — `globalThis.document` is the iframe's own DOM.
+const doc = globalThis.document
+
 try {
-  const compiled = document.getElementById('mdx-compiled')
+  const compiled = doc.getElementById('mdx-compiled')
   const body = JSON.parse(compiled?.textContent ?? '') as string
-  // eslint-disable-next-line @typescript-eslint/no-new-func
+  // eslint-disable-next-line no-new-func, @typescript-eslint/no-implied-eval -- only viable way to execute @mdx-js/mdx function-body output; runs inside sandboxed iframe with no module loader
   const fn = new Function(body) as (...args: unknown[]) => Record<string, unknown>
   const { default: MDXContent } = fn({ ...runtime })
-  createRoot(document.getElementById('root') as Element).render(
+  createRoot(doc.getElementById('root') as Element).render(
     (MDXContent as (props: Record<string, unknown>) => unknown)({ components: { Code } }) as never
   )
 } catch (err) {
-  const root = document.getElementById('root')
+  const root = doc.getElementById('root')
   if (root) {
-    const pre = document.createElement('pre')
+    const pre = doc.createElement('pre')
     pre.className = 'mdx-error'
     pre.textContent = 'MDX Error: ' + String(err)
     root.appendChild(pre)
   }
 }
-/* eslint-enable no-undef, @typescript-eslint/no-implied-eval */

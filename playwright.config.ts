@@ -1,10 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const ci = (process.env as Record<string, string | undefined>)['CI']
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
-  retries: Boolean(process.env['CI']) ? 1 : 0,
-  reporter: Boolean(process.env['CI']) ? 'github' : 'list',
+  retries: ci !== undefined ? 1 : 0,
+  reporter: ci !== undefined ? 'github' : 'list',
   use: {
     headless: true,
     trace: 'on-first-retry',
