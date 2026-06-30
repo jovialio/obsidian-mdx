@@ -1,12 +1,2 @@
-@import '@code-hike/mdx/styles';
-
-.yuleicul-obsidian-mdx {
-  max-width: var(--file-line-width);
-  margin-left: auto;
-  margin-right: auto;
-  overflow-wrap: break-word;
-}
-
-.yuleicul-obsidian-mdx code {
-  font-family: var(--font-monospace);
-}
+/* Plugin styles load in Obsidian's global context.
+   Code Hike CSS is inlined inside the sandboxed iframe — nothing needed here. */

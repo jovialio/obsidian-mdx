@@ -14,8 +14,8 @@
     "obsidian",
     "codehike"
   ],
-  "author": "Yulei Chen",
-  "repository": "https://github.com/yuleicul/obsidian-mdx",
+  "author": "jovialio",
+  "repository": "https://github.com/jovialio/obsidian-mdx",
   "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.44.0",

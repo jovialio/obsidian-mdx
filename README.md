@@ -4,7 +4,7 @@ Preview [MDX](https://github.com/mdx-js/mdx/) in Obsidian, with support for [Cod
 
 ## Installation
 
-https://obsidian.md/plugins?search=yulei%20chen
+Search for **MDX** in Obsidian's Community Plugins browser, or install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases).
 
 
 ## Getting Started
