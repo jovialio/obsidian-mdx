@@ -46,12 +46,13 @@ export default class ObsidianMDX extends Plugin {
       ) => {
         if (view.file && view.file.extension === 'mdx') {
           if (!checking) {
+            const file = view.file
             new MDXWarningModal(this.app, () => {
               this.app.workspace.detachLeavesOfType(MDX_PREVIEW)
               const leaf = this.app.workspace.getLeaf('tab')
               const viewState: MDXPreviewState = {
                 data: view.data,
-                basename: view.file!.basename,
+                basename: file.basename,
               }
               leaf.setViewState({
                 type: MDX_PREVIEW,
