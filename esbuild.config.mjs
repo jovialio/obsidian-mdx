@@ -10,6 +10,40 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === 'production'
 
+// Plugin that builds the iframe renderer as a self-contained IIFE at build time.
+// React, ReactDOM, and Code Hike are all bundled into the IIFE — no CDN requests
+// at runtime, preventing a compromised CDN from reading note content.
+const inlineAssetsPlugin = {
+  name: 'inline-assets',
+  setup(build) {
+    build.onResolve({ filter: /^renderer-script$/ }, () => ({
+      path: 'renderer-script',
+      namespace: 'inline-assets',
+    }))
+    build.onLoad({ filter: /.*/, namespace: 'inline-assets' }, async (args) => {
+      if (args.path === 'renderer-script') {
+        const result = await esbuild.build({
+          entryPoints: ['src/renderer.tsx'],
+          bundle: true,
+          format: 'iife',
+          platform: 'browser',
+          target: 'es2020',
+          minify: prod,
+          write: false,
+          treeShaking: true,
+        })
+        // Escape </script so the IIFE can be safely embedded inside a <script> tag
+        const script = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+        return {
+          contents: `export default ${JSON.stringify(script)}`,
+          loader: 'js',
+        }
+      }
+      return null
+    })
+  },
+}
+
 const context = await esbuild.context({
   banner: {
     js: banner,
@@ -38,6 +72,7 @@ const context = await esbuild.context({
   sourcemap: prod ? false : 'inline',
   treeShaking: true,
   outdir: '.',
+  plugins: [inlineAssetsPlugin],
 })
 
 if (prod) {

@@ -4,15 +4,17 @@ Preview [MDX](https://github.com/mdx-js/mdx/) in Obsidian, with support for [Cod
 
 ## Installation
 
-https://obsidian.md/plugins?search=yulei%20chen
+Search for **MDX** in Obsidian's Community Plugins browser, or install manually via the [GitHub releases](https://github.com/jovialio/obsidian-mdx/releases).
+
 
 ## Getting Started
 
 ### Usage
 
-1. Write MDX syntax in Obsidian (and it is recommended to have open source mode turned on).
+1. Write MDX syntax in a file with a `.mdx` extension (source mode is recommended).
 2. Press `ctrl/cmd + p` to open the Command Palette.
 3. Type `mdx: preview` in the Command Palette and press `Enter`.
+4. Confirm the security warning — MDX files contain executable JavaScript, so the plugin asks for confirmation before rendering.
 
 ![code-hike-example](https://github.com/yuleicul/obsidian-mdx/assets/27288153/a28bea0c-610a-4282-ad89-89fccc504f8a)
 
