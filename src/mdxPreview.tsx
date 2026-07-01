@@ -1,4 +1,4 @@
-import { TextFileView, WorkspaceLeaf } from 'obsidian'
+import { TextFileView, WorkspaceLeaf, parseYaml } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
@@ -84,9 +84,22 @@ export class mdxPreview extends TextFileView {
     }
 
     // MDX has no built-in frontmatter support, so a leading --- ... --- block
-    // would otherwise render as literal text. Strip it (Obsidian hides
-    // frontmatter in reading view too) before compiling.
-    const source = this._content.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
+    // would otherwise render as literal text. Pull it out and parse it so the
+    // renderer can show it as a properties table (like Obsidian's reading
+    // view), then compile only the body below it.
+    const fmMatch = this._content.match(/^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/)
+    let frontmatter: Record<string, unknown> | null = null
+    if (fmMatch) {
+      try {
+        const parsed = parseYaml(fmMatch[1])
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          frontmatter = parsed as Record<string, unknown>
+        }
+      } catch {
+        // Invalid YAML — skip the table rather than failing the whole preview.
+      }
+    }
+    const source = fmMatch ? this._content.slice(fmMatch[0].length) : this._content
 
     let compiledBody: string
     try {
@@ -148,10 +161,14 @@ export class mdxPreview extends TextFileView {
     .mdx-fallback-name { font-weight: 600; color: ${accent}; font-family: monospace; }
     .mdx-fallback-attr { opacity: 0.7; }
     .mdx-fallback-body > :first-child { margin-top: 0; }
+    .mdx-frontmatter { border-collapse: collapse; width: 100%; margin: 0 0 20px; font-size: 0.9em; }
+    .mdx-frontmatter th, .mdx-frontmatter td { border: 1px solid ${accent}33; padding: 4px 10px; text-align: left; vertical-align: top; }
+    .mdx-frontmatter th { width: 30%; font-weight: 600; opacity: 0.75; white-space: nowrap; }
   </style>
 </head>
 <body>
   <div id="root"></div>
+  <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter)}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames)}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>

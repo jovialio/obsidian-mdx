@@ -34,10 +34,44 @@ function makeFallback(name: string) {
   }
 }
 
+// Renders YAML frontmatter as a key/value properties table above the content,
+// mirroring Obsidian's reading view. Array values are comma-joined; objects are
+// shown as JSON. React escapes all values, so untrusted frontmatter is safe.
+function formatValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(', ')
+  if (value !== null && typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function FrontmatterTable({ data }: { data: Record<string, unknown> }) {
+  const rows = Object.entries(data)
+  if (rows.length === 0) return null
+  return React.createElement(
+    'table',
+    { className: 'mdx-frontmatter' },
+    React.createElement(
+      'tbody',
+      null,
+      ...rows.map(([key, value]) =>
+        React.createElement(
+          'tr',
+          { key },
+          React.createElement('th', null, key),
+          React.createElement('td', null, formatValue(value))
+        )
+      )
+    )
+  )
+}
+
 // This file runs inside a sandboxed iframe — window is the iframe's own window,
 // not the Obsidian host window. activeDocument/activeWindow do not exist here.
 type MdxRunFn = (r: Record<string, unknown>) => { default: (p: Record<string, unknown>) => unknown }
-type MdxWindow = Window & { __mdxRun?: MdxRunFn; __mdxFallbacks?: string[] }
+type MdxWindow = Window & {
+  __mdxRun?: MdxRunFn
+  __mdxFallbacks?: string[]
+  __mdxFrontmatter?: Record<string, unknown> | null
+}
 
 try {
   const win = window as MdxWindow
@@ -50,8 +84,14 @@ try {
     if (!(name in components)) components[name] = makeFallback(name)
   }
 
+  const frontmatter = win.__mdxFrontmatter
   createRoot(window.document.getElementById('root') as Element).render(
-    MDXContent({ components }) as never
+    React.createElement(
+      React.Fragment,
+      null,
+      frontmatter ? React.createElement(FrontmatterTable, { data: frontmatter }) : null,
+      MDXContent({ components }) as never
+    ) as never
   )
 } catch (err) {
   const root = window.document.getElementById('root')
