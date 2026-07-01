@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const isCI = 'CI' in process.env
+const proc = process as unknown as { env: Record<string, string | undefined> }
+const isCI = 'CI' in proc.env
 
 export default defineConfig({
   testDir: './tests/e2e',
