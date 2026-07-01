@@ -6,15 +6,19 @@ Forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx
 
 ## Why this plugin
 
-| Feature | MDX Preview (this plugin) | mdx-support |
-|---|---|---|
-| Code Hike support | Yes | No |
-| Works on mobile | Yes | No (desktop-only) |
-| No internet required | Yes (bundled renderer) | — |
-| Sandboxed iframe | Yes (`allow-scripts` only) | — |
-| Direct file opening | Yes (`.mdx` opens automatically) | Requires command |
+Most MDX-related plugins for Obsidian only handle **editing** — they register `.mdx` as a plain-text file so Obsidian stops treating it as unknown. None of them compile or render the MDX.
 
-**Code Hike** is the main differentiator. If you write technical documentation, blog posts, or presentations using Code Hike's scrollycoding, spotlight, or code annotation features, this is the only Obsidian plugin that renders them correctly.
+| Plugin | What it does | Compiles MDX | Code Hike | Mobile |
+|---|---|:---:|:---:|:---:|
+| **MDX Preview** (this plugin) | Compiles + renders MDX | Yes | Yes | Yes |
+| MDX by yulei-chen | Preview (older architecture) | Yes | Yes | — |
+| mdx as md | Edit .mdx as Markdown | No | No | — |
+| Edit MDX | Edit and create .mdx files | No | No | — |
+| Anything as Markdown | Treats .mdx as plain Markdown | No | No | — |
+
+**MDX Preview** is the only plugin that compiles your MDX — JSX, React components, and Code Hike annotations all render correctly. Pair it with any of the edit-only plugins if you want richer editor support alongside the preview.
+
+**Why not the original MDX by yulei-chen?** That plugin is the foundation this one was built on. This fork adds a security-first architecture (sandboxed iframe with a consent gate), bundles the renderer at build time so no internet connection is needed, and supports mobile.
 
 ## Features
 
@@ -28,15 +32,15 @@ Forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx
 
 ## Installation
 
-### Community plugin browser (recommended)
-
-Search for **MDX Preview** in **Settings → Community Plugins → Browse** and click Install.
-
 ### Manual installation
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/jovialio/obsidian-mdx/releases).
 2. Copy them into `.obsidian/plugins/mdx-preview/` inside your vault.
 3. Enable the plugin in **Settings → Community Plugins → Installed Plugins**.
+
+### Community plugin browser
+
+Once listed, search for **MDX Preview** in **Settings → Community Plugins → Browse** and click Install.
 
 ## Usage
 
