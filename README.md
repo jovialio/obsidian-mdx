@@ -28,15 +28,15 @@ Forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx
 
 ## Installation
 
-### Community plugin browser
+### Community plugin browser (recommended)
 
-Search for **MDX Preview** in **Settings → Community Plugins → Browse**.
+Search for **MDX Preview** in **Settings → Community Plugins → Browse** and click Install.
 
 ### Manual installation
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/jovialio/obsidian-mdx/releases).
 2. Copy them into `.obsidian/plugins/mdx-preview/` inside your vault.
-3. Enable the plugin in **Settings → Community Plugins**.
+3. Enable the plugin in **Settings → Community Plugins → Installed Plugins**.
 
 ## Usage
 
