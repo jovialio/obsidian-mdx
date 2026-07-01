@@ -101,13 +101,30 @@ export class mdxPreview extends TextFileView {
 
     // Compiled MDX is embedded as a regular function definition so the renderer
     // can call it directly — no eval() or new Function() required.
+    //
+    // The iframe has a null origin (sandbox with no allow-same-origin), so it
+    // cannot inherit Obsidian's CSS variables. Read the current theme's colors
+    // from the host document and inject them as concrete values so the preview
+    // matches light/dark mode instead of defaulting to a white page.
+    const hostStyle = activeWindow.getComputedStyle(this.containerEl)
+    const cssValue = (name: string, fallback: string): string => {
+      const raw = hostStyle.getPropertyValue(name).trim()
+      // Strip characters that could break out of the CSS/HTML context.
+      const safe = raw.replace(/[<>{};]/g, '')
+      return safe || fallback
+    }
+    const bg = cssValue('--background-primary', '#ffffff')
+    const fg = cssValue('--text-normal', '#1e1e1e')
+    const font = cssValue('--font-text', 'sans-serif')
+
     const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    body { margin: 0; padding: 16px; font-family: var(--font-text, sans-serif); }
-    .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
+    body { margin: 0; padding: 16px; background: ${bg}; color: ${fg}; font-family: ${font}; }
+    a { color: ${cssValue('--text-accent', '#7b6cd9')}; }
+    .mdx-error { color: #ff5555; white-space: pre-wrap; font-family: monospace; }
   </style>
 </head>
 <body>
