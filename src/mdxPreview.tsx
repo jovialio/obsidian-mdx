@@ -1,4 +1,4 @@
-import { TextFileView, WorkspaceLeaf, parseYaml } from 'obsidian'
+import { TextFileView, WorkspaceLeaf, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
@@ -13,12 +13,24 @@ let consentGiven = false
 
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
+  private editorEl: HTMLTextAreaElement | null = null
+  private toggleAction: HTMLElement | null = null
+  private _mode: 'preview' | 'source' = 'preview'
   private _content = ''
   private _renderTimer: number | null = null
   private _renderGeneration = 0
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
+  }
+
+  async onOpen() {
+    // Top-right action to switch between the rendered preview and an editable
+    // source view, mirroring Obsidian's native read/edit toggle.
+    if (!this.toggleAction) {
+      this.toggleAction = this.addAction('pencil', 'Edit source', () => this.toggleMode())
+      this.updateToggleIcon()
+    }
   }
 
   getViewType(): string {
@@ -45,6 +57,52 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.editorEl = null
+  }
+
+  private toggleMode(): void {
+    this._mode = this._mode === 'preview' ? 'source' : 'preview'
+    // Cancel any in-flight preview compile so it can't draw over the editor.
+    this._renderGeneration++
+    this.updateToggleIcon()
+    this.render()
+  }
+
+  private updateToggleIcon(): void {
+    if (!this.toggleAction) return
+    const inPreview = this._mode === 'preview'
+    // In preview show a pencil (click to edit); in source show a book (click to read).
+    setIcon(this.toggleAction, inPreview ? 'pencil' : 'book-open')
+    this.toggleAction.setAttribute('aria-label', inPreview ? 'Edit source' : 'Preview')
+  }
+
+  private renderSource(): void {
+    const container = this.containerEl.children[1] as HTMLElement
+    if (this.iframe) {
+      this.iframe.remove()
+      this.iframe = null
+    }
+    // Reuse the textarea if it already shows the current content, so typing
+    // never rebuilds the element and loses focus/cursor position.
+    if (this.editorEl && this.editorEl.value === this._content) return
+    container.empty()
+    const editor = container.createEl('textarea', { cls: 'mdx-source' })
+    editor.value = this._content
+    editor.spellcheck = false
+    editor.addEventListener('input', () => {
+      this._content = editor.value
+      this.requestSave()
+    })
+    this.editorEl = editor
+    editor.focus()
+  }
+
+  render(): void {
+    if (this._mode === 'source') {
+      this.renderSource()
+      return
+    }
+    void this.renderPreview()
   }
 
   private showConsentBanner(): void {
@@ -53,6 +111,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.editorEl = null
     container.empty()
 
     const banner = container.createDiv({ cls: 'mdx-consent' })
@@ -68,7 +127,7 @@ export class mdxPreview extends TextFileView {
     })
   }
 
-  async render() {
+  private async renderPreview() {
     if (!consentGiven) {
       this.showConsentBanner()
       return
@@ -114,8 +173,9 @@ export class mdxPreview extends TextFileView {
       compiledBody = `throw new Error(${JSON.stringify(String(err))})`.replace(/<\/script/gi, '<\\/script')
     }
 
-    // A newer render started while we were compiling — discard this result.
-    if (generation !== this._renderGeneration) return
+    // A newer render started, or the user switched to source mode, while we
+    // were compiling — discard this result so it can't draw over the editor.
+    if (generation !== this._renderGeneration || this._mode !== 'preview') return
 
     // Components the MDX references but that we can't provide (custom components
     // from the author's own app) would throw "Expected component X to be
@@ -200,11 +260,8 @@ export class mdxPreview extends TextFileView {
 </html>`
 
     const container = this.containerEl.children[1] as HTMLElement
-
-    if (this.iframe) {
-      this.iframe.remove()
-      this.iframe = null
-    }
+    container.empty()
+    this.editorEl = null
 
     const iframe = activeDocument.createElement('iframe')
     iframe.setAttribute('sandbox', 'allow-scripts')
@@ -220,5 +277,6 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.editorEl = null
   }
 }

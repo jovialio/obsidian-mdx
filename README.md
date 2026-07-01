@@ -46,7 +46,7 @@ Once listed, search for **MDX Preview** in **Settings → Community Plugins → 
 
 1. Create or open any file with a `.mdx` extension — it opens automatically in the preview view.
 2. On first open, click **Enable MDX Preview** in the consent banner. MDX files contain executable JavaScript; the plugin asks once per session before rendering.
-3. Edit the file in a separate pane (source mode recommended) and the preview updates as you type.
+3. Use the **pencil / book toggle** in the top-right of the tab to switch between the rendered preview and an editable source view. Edits are saved to the file automatically.
 
 ### Code Hike example
 
