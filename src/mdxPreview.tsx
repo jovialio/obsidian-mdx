@@ -147,22 +147,46 @@ export class mdxPreview extends TextFileView {
     const fg = cssValue('--text-normal', '#1e1e1e')
     const font = cssValue('--font-text', 'sans-serif')
     const accent = cssValue('--text-accent', '#7b6cd9')
+    const border = cssValue('--background-modifier-border', '#d0d0d0')
+    const muted = cssValue('--text-muted', '#8a8a8a')
+    const codeBg = cssValue('--background-secondary', '#f2f2f2')
 
+    // GitHub-style reading layout: a constrained, centered column with generous
+    // spacing and clear heading/table/quote styling, all derived from the active
+    // Obsidian theme. Typography is scoped to .markdown-body so it never touches
+    // Code Hike code blocks or the frontmatter table above the content.
     const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    body { margin: 0; padding: 16px; background: ${bg}; color: ${fg}; font-family: ${font}; }
-    a { color: ${accent}; }
+    body { margin: 0 auto; max-width: 820px; padding: 24px 24px 64px; background: ${bg}; color: ${fg}; font-family: ${font}; font-size: 16px; line-height: 1.6; word-wrap: break-word; }
+    a { color: ${accent}; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .markdown-body > :first-child { margin-top: 0; }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { margin: 24px 0 16px; font-weight: 600; line-height: 1.25; }
+    .markdown-body h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid ${border}; }
+    .markdown-body h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid ${border}; }
+    .markdown-body h3 { font-size: 1.25em; }
+    .markdown-body p { margin: 0 0 16px; }
+    .markdown-body ul, .markdown-body ol { margin: 0 0 16px; padding-left: 2em; }
+    .markdown-body li + li { margin-top: .25em; }
+    .markdown-body blockquote { margin: 0 0 16px; padding: 0 1em; color: ${muted}; border-left: .25em solid ${border}; }
+    .markdown-body hr { height: .25em; border: 0; background: ${border}; margin: 24px 0; }
+    .markdown-body img { max-width: 100%; }
+    .markdown-body table { border-collapse: collapse; margin: 0 0 16px; display: block; width: max-content; max-width: 100%; overflow: auto; }
+    .markdown-body th, .markdown-body td { border: 1px solid ${border}; padding: 6px 13px; }
+    .markdown-body tr:nth-child(2n) { background: ${codeBg}; }
+    .markdown-body :not(pre) > code { padding: .2em .4em; font-size: 85%; background: ${codeBg}; border-radius: 6px; }
+    .markdown-body pre { margin: 0 0 16px; border-radius: 6px; overflow: auto; }
     .mdx-error { color: #ff5555; white-space: pre-wrap; font-family: monospace; }
     .mdx-fallback { border: 1px solid ${accent}; border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
     .mdx-fallback-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 6px; font-size: 0.8em; }
     .mdx-fallback-name { font-weight: 600; color: ${accent}; font-family: monospace; }
     .mdx-fallback-attr { opacity: 0.7; }
     .mdx-fallback-body > :first-child { margin-top: 0; }
-    .mdx-frontmatter { border-collapse: collapse; width: 100%; margin: 0 0 20px; font-size: 0.9em; }
-    .mdx-frontmatter th, .mdx-frontmatter td { border: 1px solid ${accent}33; padding: 4px 10px; text-align: left; vertical-align: top; }
+    .mdx-frontmatter { border-collapse: collapse; width: 100%; margin: 0 0 24px; font-size: 0.9em; }
+    .mdx-frontmatter th, .mdx-frontmatter td { border: 1px solid ${border}; padding: 4px 10px; text-align: left; vertical-align: top; }
     .mdx-frontmatter th { width: 30%; font-weight: 600; opacity: 0.75; white-space: nowrap; }
   </style>
 </head>

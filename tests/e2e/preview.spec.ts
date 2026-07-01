@@ -79,7 +79,8 @@ test.describe('MDX Preview rendering', () => {
     }, srcdoc)
 
     const iframe = page.frameLocator('iframe')
-    await expect(iframe.locator('h1')).toHaveText('Hello', { timeout: 30_000 })
+    // Content is wrapped in the .markdown-body reading container.
+    await expect(iframe.locator('.markdown-body h1')).toHaveText('Hello', { timeout: 30_000 })
     await expect(iframe.locator('strong')).toHaveText('MDX')
   })
 

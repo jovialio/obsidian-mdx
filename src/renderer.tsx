@@ -90,7 +90,7 @@ try {
       React.Fragment,
       null,
       frontmatter ? React.createElement(FrontmatterTable, { data: frontmatter }) : null,
-      MDXContent({ components }) as never
+      React.createElement('div', { className: 'markdown-body' }, MDXContent({ components }) as never)
     ) as never
   )
 } catch (err) {
