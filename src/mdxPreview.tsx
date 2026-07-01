@@ -83,9 +83,14 @@ export class mdxPreview extends TextFileView {
       syntaxHighlighting: { theme: 'github-dark' },
     }
 
+    // MDX has no built-in frontmatter support, so a leading --- ... --- block
+    // would otherwise render as literal text. Strip it (Obsidian hides
+    // frontmatter in reading view too) before compiling.
+    const source = this._content.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
+
     let compiledBody: string
     try {
-      const compiled = await compile(this._content, {
+      const compiled = await compile(source, {
         outputFormat: 'function-body',
         remarkPlugins: [[remarkCodeHike, chConfig]],
         recmaPlugins: [[recmaCodeHike, chConfig]],
@@ -98,6 +103,18 @@ export class mdxPreview extends TextFileView {
 
     // A newer render started while we were compiling — discard this result.
     if (generation !== this._renderGeneration) return
+
+    // Components the MDX references but that we can't provide (custom components
+    // from the author's own app) would throw "Expected component X to be
+    // defined". Collect those names so the renderer can substitute a readable
+    // placeholder instead of failing the whole preview.
+    const fallbackNames = [
+      ...new Set(
+        [...compiledBody.matchAll(/_missingMdxReference\(\s*["']([A-Za-z_$][\w$]*)["']/g)].map(
+          (m) => m[1],
+        ),
+      ),
+    ]
 
     // Compiled MDX is embedded as a regular function definition so the renderer
     // can call it directly — no eval() or new Function() required.
@@ -116,6 +133,7 @@ export class mdxPreview extends TextFileView {
     const bg = cssValue('--background-primary', '#ffffff')
     const fg = cssValue('--text-normal', '#1e1e1e')
     const font = cssValue('--font-text', 'sans-serif')
+    const accent = cssValue('--text-accent', '#7b6cd9')
 
     const srcdoc = `<!DOCTYPE html>
 <html>
@@ -123,12 +141,18 @@ export class mdxPreview extends TextFileView {
   <meta charset="utf-8">
   <style>
     body { margin: 0; padding: 16px; background: ${bg}; color: ${fg}; font-family: ${font}; }
-    a { color: ${cssValue('--text-accent', '#7b6cd9')}; }
+    a { color: ${accent}; }
     .mdx-error { color: #ff5555; white-space: pre-wrap; font-family: monospace; }
+    .mdx-fallback { border: 1px solid ${accent}; border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
+    .mdx-fallback-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 6px; font-size: 0.8em; }
+    .mdx-fallback-name { font-weight: 600; color: ${accent}; font-family: monospace; }
+    .mdx-fallback-attr { opacity: 0.7; }
+    .mdx-fallback-body > :first-child { margin-top: 0; }
   </style>
 </head>
 <body>
   <div id="root"></div>
+  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames)}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>

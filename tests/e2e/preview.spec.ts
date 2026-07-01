@@ -24,7 +24,10 @@ test.beforeAll(async () => {
 })
 
 async function buildSrcdoc(mdx: string): Promise<string> {
-  const compiled = await compile(mdx, {
+  // Mirror the plugin: strip leading YAML frontmatter before compiling.
+  const source = mdx.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
+
+  const compiled = await compile(source, {
     outputFormat: 'function-body',
     remarkPlugins: [[remarkCodeHike, chConfig]],
     recmaPlugins: [[recmaCodeHike, chConfig]],
@@ -32,6 +35,14 @@ async function buildSrcdoc(mdx: string): Promise<string> {
   })
 
   const compiledBody = String(compiled).replace(/<\/script/gi, '<\\/script')
+
+  const fallbackNames = [
+    ...new Set(
+      [...compiledBody.matchAll(/_missingMdxReference\(\s*["']([A-Za-z_$][\w$]*)["']/g)].map(
+        (m) => m[1],
+      ),
+    ),
+  ]
 
   return `<!DOCTYPE html>
 <html>
@@ -44,6 +55,7 @@ async function buildSrcdoc(mdx: string): Promise<string> {
 </head>
 <body>
   <div id="root"></div>
+  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames)}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
@@ -101,6 +113,42 @@ test.describe('MDX Preview rendering', () => {
 
     const iframe = page.frameLocator('iframe')
     await expect(iframe.locator('.mdx-error')).toContainText('MDX Error', { timeout: 30_000 })
+  })
+
+  test('renders unknown components as labeled placeholders', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(
+      '<BuildLog date="2026-06-29" status="Shipped">\n\nEntry body text\n\n</BuildLog>',
+    )
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.mdx-fallback-name')).toHaveText('BuildLog', { timeout: 30_000 })
+    await expect(iframe.locator('.mdx-fallback-head')).toContainText('date: 2026-06-29')
+    await expect(iframe.locator('.mdx-fallback-head')).toContainText('status: Shipped')
+    await expect(iframe.locator('.mdx-fallback-body')).toContainText('Entry body text')
+  })
+
+  test('strips YAML frontmatter instead of rendering it', async ({ page }) => {
+    const srcdoc = await buildSrcdoc('---\ntitle: "Build Log"\neyebrow: "hidden"\n---\n\n# Visible Heading\n')
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('h1')).toHaveText('Visible Heading', { timeout: 30_000 })
+    await expect(iframe.locator('body')).not.toContainText('eyebrow')
   })
 
   test('escapes </script in compiled output', async () => {
