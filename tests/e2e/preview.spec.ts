@@ -31,10 +31,7 @@ async function buildSrcdoc(mdx: string): Promise<string> {
     development: false,
   })
 
-  const compiledJson = JSON.stringify(String(compiled)).replace(
-    /<\/script/gi,
-    '<\\/script'
-  )
+  const compiledBody = String(compiled).replace(/<\/script/gi, '<\\/script')
 
   return `<!DOCTYPE html>
 <html>
@@ -47,7 +44,7 @@ async function buildSrcdoc(mdx: string): Promise<string> {
 </head>
 <body>
   <div id="root"></div>
-  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
 </html>`
@@ -85,12 +82,11 @@ test.describe('MDX Preview rendering', () => {
     await expect(iframe.locator('li')).toHaveCount(3, { timeout: 30_000 })
   })
 
-  test('shows error message when renderer receives invalid data', async ({ page }) => {
+  test('shows error message when __mdxRun is not defined', async ({ page }) => {
     const badSrcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body>
   <div id="root"></div>
-  <script id="mdx-compiled" type="application/json">NOT_VALID_JSON</script>
   <script>${rendererScript}</script>
 </body>
 </html>`
@@ -116,8 +112,8 @@ test.describe('MDX Preview rendering', () => {
       development: false,
     })
 
-    const raw = JSON.stringify(String(compiled))
-    // The raw JSON must contain </script (proving it needs escaping)
+    const raw = String(compiled)
+    // The raw compiled output must contain </script (proving it needs escaping)
     expect(raw).toContain('</script')
 
     const escaped = raw.replace(/<\/script/gi, '<\\/script')

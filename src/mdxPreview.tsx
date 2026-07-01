@@ -83,7 +83,7 @@ export class mdxPreview extends TextFileView {
       syntaxHighlighting: { theme: 'github-dark' },
     }
 
-    let compiledJson: string
+    let compiledBody: string
     try {
       const compiled = await compile(this._content, {
         outputFormat: 'function-body',
@@ -91,16 +91,16 @@ export class mdxPreview extends TextFileView {
         recmaPlugins: [[recmaCodeHike, chConfig]],
         development: false,
       })
-      compiledJson = JSON.stringify(String(compiled)).replace(/<\/script/gi, '<\\/script')
+      compiledBody = String(compiled).replace(/<\/script/gi, '<\\/script')
     } catch (err) {
-      compiledJson = JSON.stringify(
-        `throw new Error(${JSON.stringify(String(err))})`
-      ).replace(/<\/script/gi, '<\\/script')
+      compiledBody = `throw new Error(${JSON.stringify(String(err))})`.replace(/<\/script/gi, '<\\/script')
     }
 
     // A newer render started while we were compiling — discard this result.
     if (generation !== this._renderGeneration) return
 
+    // Compiled MDX is embedded as a regular function definition so the renderer
+    // can call it directly — no eval() or new Function() required.
     const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
@@ -112,7 +112,7 @@ export class mdxPreview extends TextFileView {
 </head>
 <body>
   <div id="root"></div>
-  <script id="mdx-compiled" type="application/json">${compiledJson}</script>
+  <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
 </html>`
