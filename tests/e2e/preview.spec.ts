@@ -58,8 +58,8 @@ async function buildSrcdoc(
 </head>
 <body>
   <div id="root"></div>
-  <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter)}</script>
-  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames)}</script>
+  <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
@@ -166,6 +166,26 @@ test.describe('MDX Preview rendering', () => {
     )
     // The body still renders below the table.
     await expect(iframe.locator('h1')).toHaveText('Visible Heading')
+  })
+
+  test('handles a </script> value in frontmatter without breaking out', async ({ page }) => {
+    const srcdoc = await buildSrcdoc('# Heading\n', { title: '</script><img>', ok: 'yes' })
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    // Table still renders (script tag was not terminated early)…
+    await expect(iframe.locator('table.mdx-frontmatter')).toContainText('</script><img>', {
+      timeout: 30_000,
+    })
+    // …and the body below it renders too.
+    await expect(iframe.locator('.markdown-body h1')).toHaveText('Heading')
   })
 
   test('escapes </script in compiled output', async () => {

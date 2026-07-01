@@ -252,8 +252,8 @@ export class mdxPreview extends TextFileView {
 </head>
 <body>
   <div id="root"></div>
-  <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter)}</script>
-  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames)}</script>
+  <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
