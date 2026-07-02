@@ -14,10 +14,16 @@
   display: block;
 }
 
+/* Applied to the view content while editing so the absolutely-positioned
+   editor below has a positioning context to fill. */
+.mdx-editing {
+  position: relative;
+}
+
 /* Fill the whole view. Absolute positioning derives the height from the
    containing block instead of a percentage, which iOS WebView resolves
    reliably (percentage heights on textareas often collapse there). The
-   parent (.view-content) is given position: relative in renderSource. */
+   parent gets the .mdx-editing class in renderSource. */
 .mdx-source {
   position: absolute;
   inset: 0;
