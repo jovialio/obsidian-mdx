@@ -146,11 +146,11 @@ export class mdxPreview extends TextFileView {
     // would otherwise render as literal text. Pull it out and parse it so the
     // renderer can show it as a properties table (like Obsidian's reading
     // view), then compile only the body below it.
-    const fmMatch = this._content.match(/^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/)
+    const fmMatch = this._content.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/)
     let frontmatter: Record<string, unknown> | null = null
     if (fmMatch) {
       try {
-        const parsed = parseYaml(fmMatch[1])
+        const parsed: unknown = parseYaml(fmMatch[1])
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           frontmatter = parsed as Record<string, unknown>
         }
