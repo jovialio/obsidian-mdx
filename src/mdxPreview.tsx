@@ -87,8 +87,8 @@ export class mdxPreview extends TextFileView {
     if (this.editorEl && this.editorEl.value === this._content) return
     container.empty()
     // The editor fills the view via position: absolute, so its container must
-    // establish a positioning context.
-    container.style.position = 'relative'
+    // establish a positioning context (see .mdx-editing in styles.css).
+    container.addClass('mdx-editing')
     const editor = container.createEl('textarea', { cls: 'mdx-source' })
     editor.value = this._content
     editor.spellcheck = false
@@ -115,6 +115,7 @@ export class mdxPreview extends TextFileView {
       this.iframe = null
     }
     this.editorEl = null
+    container.removeClass('mdx-editing')
     container.empty()
 
     const banner = container.createDiv({ cls: 'mdx-consent' })
@@ -263,6 +264,7 @@ export class mdxPreview extends TextFileView {
 </html>`
 
     const container = this.containerEl.children[1] as HTMLElement
+    container.removeClass('mdx-editing')
     container.empty()
     this.editorEl = null
 
