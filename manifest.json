@@ -2,7 +2,7 @@
 	"id": "mdx-preview",
 	"name": "MDX Preview",
 	"version": "0.1.9",
-	"minAppVersion": "1.0.0",
+	"minAppVersion": "1.1.0",
 	"description": "Preview MDX with Code Hike — scrollycoding, code annotations, and syntax highlighting. Works on mobile and desktop. No internet connection required.",
 	"author": "jovialio",
 	"authorUrl": "https://github.com/jovialio",
