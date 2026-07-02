@@ -86,6 +86,9 @@ export class mdxPreview extends TextFileView {
     // never rebuilds the element and loses focus/cursor position.
     if (this.editorEl && this.editorEl.value === this._content) return
     container.empty()
+    // The editor fills the view via position: absolute, so its container must
+    // establish a positioning context.
+    container.style.position = 'relative'
     const editor = container.createEl('textarea', { cls: 'mdx-source' })
     editor.value = this._content
     editor.spellcheck = false

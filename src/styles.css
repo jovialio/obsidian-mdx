@@ -14,12 +14,21 @@
   display: block;
 }
 
+/* Fill the whole view. Absolute positioning derives the height from the
+   containing block instead of a percentage, which iOS WebView resolves
+   reliably (percentage heights on textareas often collapse there). The
+   parent (.view-content) is given position: relative in renderSource. */
 .mdx-source {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  margin: 0;
   border: none;
   outline: none;
   resize: none;
+  /* Strip the iOS native rounded/inset textarea chrome. */
+  -webkit-appearance: none;
+  appearance: none;
   padding: 16px;
   background: var(--background-primary);
   color: var(--text-normal);
