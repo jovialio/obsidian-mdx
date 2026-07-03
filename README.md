@@ -6,24 +6,16 @@ Forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx
 
 ## Why this plugin
 
-Most MDX-related plugins for Obsidian only handle **editing** — they register `.mdx` as a plain-text file so Obsidian stops treating it as unknown. None of them compile or render the MDX.
+Most MDX-related plugins for Obsidian only handle **editing** — they register `.mdx` as a plain-text file so Obsidian stops treating it as unknown, but they don't compile or render the MDX.
 
-| Plugin | What it does | Compiles MDX | Code Hike | Mobile |
-|---|---|:---:|:---:|:---:|
-| **MDX Preview** (this plugin) | Compiles + renders MDX | Yes | Yes | Yes |
-| MDX by yulei-chen | Preview (older architecture) | Yes | Yes | — |
-| mdx as md | Edit .mdx as Markdown | No | No | — |
-| Edit MDX | Edit and create .mdx files | No | No | — |
-| Anything as Markdown | Treats .mdx as plain Markdown | No | No | — |
-
-**MDX Preview** is the only plugin that compiles your MDX — JSX, React components, and Code Hike annotations all render correctly. Pair it with any of the edit-only plugins if you want richer editor support alongside the preview.
+**MDX Preview** compiles your MDX so JSX and Code Hike annotations render in a live preview. Custom React components from your own app can't be resolved by the plugin, so they show a labeled placeholder rather than breaking the whole preview. Pair it with any edit-only plugin if you want richer editor support alongside the preview.
 
 **Why not the original MDX by yulei-chen?** That plugin is the foundation this one was built on. This fork adds a security-first architecture (sandboxed iframe with a consent gate), bundles the renderer at build time so no internet connection is needed, and supports mobile.
 
 ## Features
 
 - **Code Hike rendering** — scrollycoding, `!focus`, `!mark`, `!diff`, and all Code Hike annotations work out of the box
-- **Compile-time syntax highlighting** — powered by [`@code-hike/lighter`](https://github.com/code-hike/lighter) (pure JavaScript, no native dependencies), so it works on iOS and Android
+- **Compile-time syntax highlighting** — powered by [Code Hike](https://codehike.org) (whose `@code-hike/lighter` highlighter is pure JavaScript with no native dependencies), so it works on iOS and Android
 - **Sandboxed execution** — MDX JavaScript runs in a null-origin `sandbox="allow-scripts"` iframe with no access to your vault or Obsidian APIs
 - **Session consent gate** — you confirm once per session before any MDX JavaScript runs
 - **Offline** — the renderer is bundled at build time; no CDN calls are made at runtime
