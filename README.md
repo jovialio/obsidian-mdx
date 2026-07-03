@@ -83,6 +83,12 @@ MDX is executable JavaScript. This plugin takes several steps to limit the blast
 
 Issues and pull requests are welcome at [jovialio/obsidian-mdx](https://github.com/jovialio/obsidian-mdx).
 
+## Behind the build
+
+The decisions behind this plugin — mobile compatibility, offline rendering, eliminating `eval()`, and the sandboxed security model — are documented in detail:
+
+[From Fork to Production: How I Rebuilt an Obsidian MDX Plugin](https://blog.synvest.life/writing/from-fork-to-production-obsidian-mdx-plugin)
+
 ## Credits
 
 Originally forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx) by [yulei-chen](https://github.com/yulei-chen). Thank you for the foundation.
