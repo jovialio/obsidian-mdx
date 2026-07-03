@@ -258,6 +258,48 @@ function second() {
     await expect(codePre).toContainText('function second')
   })
 
+  test('renders a step with multiple code files without blanking the preview', async ({ page }) => {
+    // Code Hike's multi-value marker (!!code) makes step.code an array of
+    // highlighted blocks. Passing that array straight to Pre throws on the
+    // missing `tokens`; the step must render every block instead.
+    const srcdoc = await buildSrcdoc(`
+<Scrollycoding title="Multi-file step">
+
+## !!steps Both files
+
+Show two files at once.
+
+\`\`\`js !!code
+const alpha = 1
+\`\`\`
+
+\`\`\`js !!code
+const beta = 2
+\`\`\`
+
+</Scrollycoding>
+`)
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    // The preview renders (no MDX Error) and both code blocks are present.
+    await expect(iframe.locator('.mdx-scrollycoding-title')).toHaveText('Multi-file step', {
+      timeout: 30_000,
+    })
+    await expect(iframe.locator('.mdx-error')).toHaveCount(0)
+    const codeBlocks = iframe.locator('.mdx-scrollycoding-code pre')
+    await expect(codeBlocks).toHaveCount(2)
+    await expect(codeBlocks.nth(0)).toContainText('const alpha')
+    await expect(codeBlocks.nth(1)).toContainText('const beta')
+  })
+
   test('renders frontmatter as a properties table above the body', async ({ page }) => {
     const srcdoc = await buildSrcdoc('# Visible Heading\n', {
       title: 'About',

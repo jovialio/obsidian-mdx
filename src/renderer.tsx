@@ -8,19 +8,34 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
+// A step's code can be a single highlighted block or, when the author uses
+// Code Hike's multi-value marker (!!code) to show several files in one step,
+// an array of them. Both shapes must be handled.
+type StepCode = HighlightedCode | HighlightedCode[]
+
 type ScrollyStep = {
   title?: string
   children?: React.ReactNode
-  code?: HighlightedCode
-  codeblock?: HighlightedCode
+  code?: StepCode
+  codeblock?: StepCode
 }
 
 function Slot({ children }: { children?: React.ReactNode }) {
   return React.createElement(React.Fragment, null, children)
 }
 
-function getStepCode(step: ScrollyStep): HighlightedCode | undefined {
+function getStepCode(step: ScrollyStep): StepCode | undefined {
   return step.code ?? step.codeblock
+}
+
+// Render a step's code. Pre expects a single highlighted block, so an array
+// (multi-file step) is rendered as stacked blocks rather than passed straight
+// through — passing the array would throw on the missing `tokens` and blank
+// the whole preview.
+function renderStepCode(code: StepCode | undefined): React.ReactNode {
+  if (!code) return null
+  const blocks = Array.isArray(code) ? code : [code]
+  return blocks.map((block, index) => React.createElement(Pre, { code: block, key: index }))
 }
 
 function Scrollycoding({
@@ -101,7 +116,7 @@ function Scrollycoding({
       React.createElement(
         'div',
         { className: 'mdx-scrollycoding-code' },
-        activeCode ? React.createElement(Pre, { code: activeCode }) : null
+        renderStepCode(activeCode)
       )
     )
   )
