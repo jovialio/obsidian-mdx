@@ -140,6 +140,52 @@ test.describe('MDX Preview rendering', () => {
     await expect(iframe.locator('.mdx-fallback-body')).toContainText('Entry body text')
   })
 
+  test('renders Code Hike scrollycoding steps with highlighted code', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(`
+<Scrollycoding title="Demo walkthrough">
+
+## !!steps First step
+
+Introduce the first branch.
+
+\`\`\`js !code app.js
+function first() {
+  return 1
+}
+\`\`\`
+
+## !!steps Second step
+
+Move to the second branch.
+
+\`\`\`js !code app.js
+function second() {
+  return 2
+}
+\`\`\`
+
+</Scrollycoding>
+`)
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.mdx-scrollycoding-title')).toHaveText('Demo walkthrough', {
+      timeout: 30_000,
+    })
+    await expect(iframe.locator('.mdx-scrollycoding-step')).toHaveCount(2)
+    await expect(iframe.locator('.mdx-scrollycoding-step').first()).toContainText(
+      'Introduce the first branch.',
+    )
+    await expect(iframe.locator('.mdx-scrollycoding-code pre')).toContainText('function first')
+  })
+
   test('renders frontmatter as a properties table above the body', async ({ page }) => {
     const srcdoc = await buildSrcdoc('# Visible Heading\n', {
       title: 'About',

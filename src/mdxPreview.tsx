@@ -252,6 +252,23 @@ export class mdxPreview extends TextFileView {
     .mdx-frontmatter { border-collapse: collapse; width: 100%; margin: 0 0 24px; font-size: 0.9em; }
     .mdx-frontmatter th, .mdx-frontmatter td { border: 1px solid ${border}; padding: 4px 10px; text-align: left; vertical-align: top; }
     .mdx-frontmatter th { width: 30%; font-weight: 600; opacity: 0.75; white-space: nowrap; }
+    .mdx-scrollycoding { margin: 24px 0; }
+    .mdx-scrollycoding-title { margin: 0 0 16px; font-size: 1.15em; }
+    .mdx-scrollycoding-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1.15fr); gap: 20px; align-items: start; }
+    .mdx-scrollycoding-steps { display: flex; flex-direction: column; gap: 18px; }
+    .mdx-scrollycoding-step { min-height: 34vh; padding: 14px 16px; border-left: 3px solid ${border}; opacity: 0.78; transition: border-color 160ms ease, opacity 160ms ease, background 160ms ease; }
+    .mdx-scrollycoding-step-active { border-left-color: ${accent}; background: ${codeBg}; opacity: 1; }
+    .mdx-scrollycoding-step-title { margin: 0 0 8px; font-size: 1em; line-height: 1.35; }
+    .mdx-scrollycoding-step > :last-child { margin-bottom: 0; }
+    .mdx-scrollycoding-code { position: sticky; top: 16px; min-width: 0; }
+    .mdx-scrollycoding-code pre { margin: 0; max-height: calc(100vh - 48px); }
+    .mdx-scrollycoding-static { border: 1px solid ${border}; border-radius: 6px; padding: 12px; }
+    @media (max-width: 700px) {
+      .mdx-scrollycoding-grid { grid-template-columns: 1fr; }
+      .mdx-scrollycoding-step { min-height: auto; }
+      .mdx-scrollycoding-code { position: static; }
+      .mdx-scrollycoding-code pre { max-height: none; }
+    }
   </style>
 </head>
 <body>

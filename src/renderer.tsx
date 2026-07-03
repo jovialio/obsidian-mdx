@@ -8,6 +8,105 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
+type ScrollyStep = {
+  title?: string
+  children?: React.ReactNode
+  code?: HighlightedCode
+  codeblock?: HighlightedCode
+}
+
+function Slot({ children }: { children?: React.ReactNode }) {
+  return React.createElement(React.Fragment, null, children)
+}
+
+function getStepCode(step: ScrollyStep): HighlightedCode | undefined {
+  return step.code ?? step.codeblock
+}
+
+function Scrollycoding({
+  title,
+  steps,
+  children,
+}: {
+  title?: string
+  steps?: ScrollyStep[]
+  children?: React.ReactNode
+}) {
+  const safeSteps = Array.isArray(steps) ? steps : []
+  const [activeIndex, setActiveIndex] = React.useState(0)
+  const stepRefs = React.useRef<Array<HTMLDivElement | null>>([])
+
+  React.useEffect(() => {
+    if (safeSteps.length === 0 || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        const index = visible?.target.getAttribute('data-step-index')
+        if (index) setActiveIndex(Number(index))
+      },
+      { rootMargin: '-20% 0px -55% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+    )
+
+    stepRefs.current.forEach((el) => {
+      if (el) observer.observe(el)
+    })
+    return () => observer.disconnect()
+  }, [safeSteps.length])
+
+  if (safeSteps.length === 0) {
+    return React.createElement(
+      'section',
+      { className: 'mdx-scrollycoding mdx-scrollycoding-static' },
+      title ? React.createElement('h3', { className: 'mdx-scrollycoding-title' }, title) : null,
+      children
+    )
+  }
+
+  const boundedActive = Math.min(Math.max(activeIndex, 0), safeSteps.length - 1)
+  const activeCode = getStepCode(safeSteps[boundedActive])
+
+  return React.createElement(
+    'section',
+    { className: 'mdx-scrollycoding' },
+    title ? React.createElement('h3', { className: 'mdx-scrollycoding-title' }, title) : null,
+    React.createElement(
+      'div',
+      { className: 'mdx-scrollycoding-grid' },
+      React.createElement(
+        'div',
+        { className: 'mdx-scrollycoding-steps' },
+        ...safeSteps.map((step, index) =>
+          React.createElement(
+            'div',
+            {
+              className:
+                'mdx-scrollycoding-step' +
+                (index === boundedActive ? ' mdx-scrollycoding-step-active' : ''),
+              'data-step-index': String(index),
+              key: index,
+              ref: (el: HTMLDivElement | null) => {
+                stepRefs.current[index] = el
+              },
+            },
+            step.title
+              ? React.createElement('h4', { className: 'mdx-scrollycoding-step-title' }, step.title)
+              : null,
+            step.children
+          )
+        )
+      ),
+      React.createElement(
+        'div',
+        { className: 'mdx-scrollycoding-code' },
+        activeCode ? React.createElement(Pre, { code: activeCode }) : null
+      )
+    )
+  )
+}
+
 // Placeholder for components the MDX references but the plugin cannot resolve
 // (custom React components defined in the author's own app). Renders the
 // component name, any simple attributes, and its children so the content stays
@@ -79,7 +178,12 @@ try {
   if (!mdxRun) throw new Error('MDX script did not load')
   const { default: MDXContent } = mdxRun({ ...runtime })
 
-  const components: Record<string, unknown> = { Code }
+  const components: Record<string, unknown> = {
+    Code,
+    Scrollycoding,
+    ScrollyCoding: Scrollycoding,
+    slot: Slot,
+  }
   for (const name of win.__mdxFallbacks ?? []) {
     if (!(name in components)) components[name] = makeFallback(name)
   }
