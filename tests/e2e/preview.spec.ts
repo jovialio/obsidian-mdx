@@ -26,6 +26,7 @@ test.beforeAll(async () => {
 async function buildSrcdoc(
   mdx: string,
   frontmatter: Record<string, unknown> | null = null,
+  extraStyle = '',
 ): Promise<string> {
   // Mirror the plugin: strip leading YAML frontmatter before compiling.
   const source = mdx.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
@@ -54,6 +55,7 @@ async function buildSrcdoc(
   <style>
     body { margin: 0; padding: 16px; }
     .mdx-error { color: red; white-space: pre-wrap; font-family: monospace; }
+    ${extraStyle}
   </style>
 </head>
 <body>
@@ -138,6 +140,164 @@ test.describe('MDX Preview rendering', () => {
     await expect(iframe.locator('.mdx-fallback-head')).toContainText('date: 2026-06-29')
     await expect(iframe.locator('.mdx-fallback-head')).toContainText('status: Shipped')
     await expect(iframe.locator('.mdx-fallback-body')).toContainText('Entry body text')
+  })
+
+  test('renders Code Hike scrollycoding steps with highlighted code', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(`
+<Scrollycoding title="Demo walkthrough">
+
+## !!steps First step
+
+Introduce the first branch.
+
+\`\`\`js !code app.js
+function first() {
+  return 1
+}
+\`\`\`
+
+## !!steps Second step
+
+Move to the second branch.
+
+\`\`\`js !code app.js
+function second() {
+  return 2
+}
+\`\`\`
+
+</Scrollycoding>
+`)
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.mdx-scrollycoding-title')).toHaveText('Demo walkthrough', {
+      timeout: 30_000,
+    })
+    await expect(iframe.locator('.mdx-scrollycoding-step')).toHaveCount(2)
+    await expect(iframe.locator('.mdx-scrollycoding-step').first()).toContainText(
+      'Introduce the first branch.',
+    )
+    await expect(iframe.locator('.mdx-scrollycoding-code pre')).toContainText('function first')
+  })
+
+  test('switches the sticky code panel to the step scrolled into view', async ({ page }) => {
+    // The renderer tracks the active step with an IntersectionObserver and shows
+    // that step's code in the sticky panel. Reproduce enough of the production
+    // layout (tall steps + a grid) that scrolling moves a different step into the
+    // observer's active band, then assert the active class and code both follow.
+    const srcdoc = await buildSrcdoc(
+      `
+<Scrollycoding title="Demo walkthrough">
+
+## !!steps First step
+
+Introduce the first branch.
+
+\`\`\`js !code app.js
+function first() {
+  return 1
+}
+\`\`\`
+
+## !!steps Second step
+
+Move to the second branch.
+
+\`\`\`js !code app.js
+function second() {
+  return 2
+}
+\`\`\`
+
+</Scrollycoding>
+`,
+      null,
+      `.mdx-scrollycoding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+       .mdx-scrollycoding-steps { display: flex; flex-direction: column; gap: 18px; }
+       .mdx-scrollycoding-step { min-height: 120vh; }
+       .mdx-scrollycoding-code { position: sticky; top: 16px; }`,
+    )
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      // A fixed desktop viewport so the two tall steps can't both sit in the
+      // observer's active band at once.
+      iframe.style.width = '900px'
+      iframe.style.height = '600px'
+      iframe.style.border = '0'
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    const steps = iframe.locator('.mdx-scrollycoding-step')
+    const codePre = iframe.locator('.mdx-scrollycoding-code pre')
+
+    // At the top, the first step is active and its code is in the panel.
+    await expect(steps.nth(0)).toHaveClass(/mdx-scrollycoding-step-active/, { timeout: 30_000 })
+    await expect(steps.nth(1)).not.toHaveClass(/mdx-scrollycoding-step-active/)
+    await expect(codePre).toContainText('function first')
+
+    // Scroll the second step into view; the active step and code must follow.
+    const frame = page.frames().find((f) => f.parentFrame() === page.mainFrame())
+    if (!frame) throw new Error('preview iframe not found')
+    await frame.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+
+    await expect(steps.nth(1)).toHaveClass(/mdx-scrollycoding-step-active/)
+    await expect(steps.nth(0)).not.toHaveClass(/mdx-scrollycoding-step-active/)
+    await expect(codePre).toContainText('function second')
+  })
+
+  test('renders a step with multiple code files without blanking the preview', async ({ page }) => {
+    // Code Hike's multi-value marker (!!code) makes step.code an array of
+    // highlighted blocks. Passing that array straight to Pre throws on the
+    // missing `tokens`; the step must render every block instead.
+    const srcdoc = await buildSrcdoc(`
+<Scrollycoding title="Multi-file step">
+
+## !!steps Both files
+
+Show two files at once.
+
+\`\`\`js !!code
+const alpha = 1
+\`\`\`
+
+\`\`\`js !!code
+const beta = 2
+\`\`\`
+
+</Scrollycoding>
+`)
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    // The preview renders (no MDX Error) and both code blocks are present.
+    await expect(iframe.locator('.mdx-scrollycoding-title')).toHaveText('Multi-file step', {
+      timeout: 30_000,
+    })
+    await expect(iframe.locator('.mdx-error')).toHaveCount(0)
+    const codeBlocks = iframe.locator('.mdx-scrollycoding-code pre')
+    await expect(codeBlocks).toHaveCount(2)
+    await expect(codeBlocks.nth(0)).toContainText('const alpha')
+    await expect(codeBlocks.nth(1)).toContainText('const beta')
   })
 
   test('renders frontmatter as a properties table above the body', async ({ page }) => {
