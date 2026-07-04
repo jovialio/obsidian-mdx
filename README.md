@@ -71,6 +71,28 @@ MDX is executable JavaScript. This plugin takes several steps to limit the blast
 - The consent gate resets on every Obsidian restart, so you are always in control of when MDX JavaScript runs
 - Outbound network requests from inside the iframe are still possible (this is a browser constraint, not something a plugin can block). Only preview files you trust.
 
+## Development
+
+This repo uses `pnpm` (see `pnpm-lock.yaml`).
+
+```bash
+pnpm install
+pnpm dev    # esbuild --watch, builds main.js + styles.css with inline sourcemaps
+pnpm build  # tsc -noEmit type-check, then a minified production build
+```
+
+To see changes in Obsidian itself, symlink (or copy) `manifest.json`, `main.js`, and `styles.css` into a test vault at `.obsidian/plugins/mdx-preview/`, then reload Obsidian. Installing the community **Hot-Reload** plugin in that vault saves you from restarting Obsidian after every rebuild.
+
+### Testing
+
+```bash
+pnpm test   # playwright test
+```
+
+[tests/e2e/preview.spec.ts](tests/e2e/preview.spec.ts) doesn't launch real Obsidian. It bundles `src/renderer.tsx` standalone with esbuild, compiles sample MDX through the same `@mdx-js/mdx` + `codehike/mdx` pipeline the plugin uses at runtime, and injects both into a sandboxed `srcdoc` iframe on a Playwright page, then asserts against the rendered DOM. This covers the renderer and MDX-compile pipeline in isolation — `src/main.ts` and `src/mdxPreview.tsx` (the Obsidian view wrapper) aren't exercised by these tests, so verifying those needs the manual vault loop above.
+
+If Playwright reports a missing browser, run `pnpm exec playwright install chromium` once.
+
 ## Contributing
 
 Issues and pull requests are welcome at [jovialio/obsidian-mdx](https://github.com/jovialio/obsidian-mdx).
