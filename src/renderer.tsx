@@ -13,6 +13,13 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
 // an array of them. Both shapes must be handled.
 type StepCode = HighlightedCode | HighlightedCode[]
 
+function Image(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const imageSources = (window as MdxWindow).__mdxImageSources ?? {}
+  const src = typeof props.src === 'string' ? imageSources[props.src] ?? props.src : props.src
+
+  return React.createElement('img', { ...props, src })
+}
+
 type ScrollyStep = {
   title?: string
   children?: React.ReactNode
@@ -185,6 +192,7 @@ type MdxWindow = Window & {
   __mdxRun?: MdxRunFn
   __mdxFallbacks?: string[]
   __mdxFrontmatter?: Record<string, unknown> | null
+  __mdxImageSources?: Record<string, string>
 }
 
 try {
@@ -195,6 +203,7 @@ try {
 
   const components: Record<string, unknown> = {
     Code,
+    img: Image,
     Scrollycoding,
     ScrollyCoding: Scrollycoding,
     slot: Slot,

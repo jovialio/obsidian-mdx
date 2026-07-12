@@ -27,6 +27,7 @@ async function buildSrcdoc(
   mdx: string,
   frontmatter: Record<string, unknown> | null = null,
   extraStyle = '',
+  imageSources: Record<string, string> = {},
 ): Promise<string> {
   // Mirror the plugin: strip leading YAML frontmatter before compiling.
   const source = mdx.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
@@ -62,6 +63,7 @@ async function buildSrcdoc(
   <div id="root"></div>
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
@@ -99,6 +101,34 @@ test.describe('MDX Preview rendering', () => {
 
     const iframe = page.frameLocator('iframe')
     await expect(iframe.locator('li')).toHaveCount(3, { timeout: 30_000 })
+  })
+
+  test('rewrites local image sources to provided Obsidian resource URLs', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(
+      '![Dashboard](/images/the-reasoning-is-the-product/dashboard.png)',
+      null,
+      '',
+      {
+        '/images/the-reasoning-is-the-product/dashboard.png':
+          'app://local/vault/public/images/the-reasoning-is-the-product/dashboard.png',
+      },
+    )
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.markdown-body img')).toHaveAttribute(
+      'src',
+      'app://local/vault/public/images/the-reasoning-is-the-product/dashboard.png',
+      { timeout: 30_000 },
+    )
+    await expect(iframe.locator('.markdown-body img')).toHaveAttribute('alt', 'Dashboard')
   })
 
   test('shows error message when __mdxRun is not defined', async ({ page }) => {

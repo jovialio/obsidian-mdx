@@ -1,4 +1,4 @@
-import { TextFileView, WorkspaceLeaf, parseYaml, setIcon } from 'obsidian'
+import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
@@ -10,6 +10,32 @@ export const MDX_PREVIEW = 'mdx-preview'
 // any MDX JavaScript runs, since allow-scripts lets iframe code make
 // outbound requests even though vault/parent APIs are blocked.
 let consentGiven = false
+
+const imageSourcePattern =
+  /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)|<img\b[^>]*\bsrc=(["'])(.*?)\2/gi
+
+function isExternalImageSource(src: string): boolean {
+  return (
+    src === '' ||
+    src.startsWith('#') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(src) ||
+    src.startsWith('//')
+  )
+}
+
+function ancestorDirs(path: string): string[] {
+  const dirs: string[] = []
+  let current = path
+
+  while (current) {
+    dirs.push(current)
+    const next = current.split('/').slice(0, -1).join('/')
+    if (next === current) break
+    current = next
+  }
+
+  return dirs
+}
 
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
@@ -131,6 +157,51 @@ export class mdxPreview extends TextFileView {
     })
   }
 
+  private collectImageSources(source: string): Record<string, string> {
+    const resolved: Record<string, string> = {}
+
+    for (const match of source.matchAll(imageSourcePattern)) {
+      const src = match[1] ?? match[3]
+      if (src && !(src in resolved)) {
+        const resourcePath = this.resolveImageSource(src)
+        if (resourcePath) resolved[src] = resourcePath
+      }
+    }
+
+    return resolved
+  }
+
+  private resolveImageSource(src: string): string | null {
+    if (isExternalImageSource(src)) return null
+
+    const cleanSrc = src.split(/[?#]/, 1)[0]
+    let decoded: string
+    try {
+      decoded = decodeURI(cleanSrc)
+    } catch {
+      decoded = cleanSrc
+    }
+
+    const fileDir = this.file?.parent?.path
+    const baseDir = fileDir && fileDir !== '/' ? fileDir : ''
+    const trimmed = decoded.replace(/^\/+/, '')
+    const candidates = decoded.startsWith('/')
+      ? [
+          trimmed,
+          ...ancestorDirs(baseDir).flatMap((dir) => [dir + '/public/' + trimmed, dir + '/' + trimmed]),
+          'public/' + trimmed,
+        ]
+      : [baseDir ? baseDir + '/' + decoded : decoded]
+
+    for (const candidate of candidates) {
+      const normalized = normalizePath(candidate)
+      const file = this.app.vault.getAbstractFileByPath(normalized)
+      if (file instanceof TFile) return this.app.vault.getResourcePath(file)
+    }
+
+    return null
+  }
+
   private async renderPreview() {
     if (!consentGiven) {
       this.showConsentBanner()
@@ -163,6 +234,7 @@ export class mdxPreview extends TextFileView {
       }
     }
     const source = fmMatch ? this._content.slice(fmMatch[0].length) : this._content
+    const imageSources = this.collectImageSources(source)
 
     let compiledBody: string
     try {
@@ -275,6 +347,7 @@ export class mdxPreview extends TextFileView {
   <div id="root"></div>
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
