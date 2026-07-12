@@ -2,6 +2,12 @@ import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon }
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
+import {
+  decodeImageSource,
+  extractImageSources,
+  imageCandidatePaths,
+  isExternalImageSource,
+} from './imageSources'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
@@ -10,32 +16,6 @@ export const MDX_PREVIEW = 'mdx-preview'
 // any MDX JavaScript runs, since allow-scripts lets iframe code make
 // outbound requests even though vault/parent APIs are blocked.
 let consentGiven = false
-
-const imageSourcePattern =
-  /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)|<img\b[^>]*\bsrc=(["'])(.*?)\2/gi
-
-function isExternalImageSource(src: string): boolean {
-  return (
-    src === '' ||
-    src.startsWith('#') ||
-    /^[a-z][a-z0-9+.-]*:/i.test(src) ||
-    src.startsWith('//')
-  )
-}
-
-function ancestorDirs(path: string): string[] {
-  const dirs: string[] = []
-  let current = path
-
-  while (current) {
-    dirs.push(current)
-    const next = current.split('/').slice(0, -1).join('/')
-    if (next === current) break
-    current = next
-  }
-
-  return dirs
-}
 
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
@@ -159,13 +139,18 @@ export class mdxPreview extends TextFileView {
 
   private collectImageSources(source: string): Record<string, string> {
     const resolved: Record<string, string> = {}
+    // Key by the decoded source so the map matches whatever the compiled MDX
+    // emits: angle-bracketed links with spaces (`![a](<my file.png>)`) come out
+    // percent-encoded, while inline links keep the author's spelling. Decoding
+    // both sides (here and in the renderer) makes the lookup agree either way.
+    const seen = new Set<string>()
 
-    for (const match of source.matchAll(imageSourcePattern)) {
-      const src = match[1] ?? match[3]
-      if (src && !(src in resolved)) {
-        const resourcePath = this.resolveImageSource(src)
-        if (resourcePath) resolved[src] = resourcePath
-      }
+    for (const src of extractImageSources(source)) {
+      const key = decodeImageSource(src)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const resourcePath = this.resolveImageSource(src)
+      if (resourcePath) resolved[key] = resourcePath
     }
 
     return resolved
@@ -174,26 +159,10 @@ export class mdxPreview extends TextFileView {
   private resolveImageSource(src: string): string | null {
     if (isExternalImageSource(src)) return null
 
-    const cleanSrc = src.split(/[?#]/, 1)[0]
-    let decoded: string
-    try {
-      decoded = decodeURI(cleanSrc)
-    } catch {
-      decoded = cleanSrc
-    }
-
     const fileDir = this.file?.parent?.path
     const baseDir = fileDir && fileDir !== '/' ? fileDir : ''
-    const trimmed = decoded.replace(/^\/+/, '')
-    const candidates = decoded.startsWith('/')
-      ? [
-          trimmed,
-          ...ancestorDirs(baseDir).flatMap((dir) => [dir + '/public/' + trimmed, dir + '/' + trimmed]),
-          'public/' + trimmed,
-        ]
-      : [baseDir ? baseDir + '/' + decoded : decoded]
 
-    for (const candidate of candidates) {
+    for (const candidate of imageCandidatePaths(src, baseDir)) {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
       if (file instanceof TFile) return this.app.vault.getResourcePath(file)

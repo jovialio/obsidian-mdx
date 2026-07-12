@@ -131,6 +131,37 @@ test.describe('MDX Preview rendering', () => {
     await expect(iframe.locator('.markdown-body img')).toHaveAttribute('alt', 'Dashboard')
   })
 
+  test('rewrites and actually loads a spaced angle-bracket image source in the sandbox', async ({
+    page,
+  }) => {
+    // 1x1 PNG. Proves two things at once: an angle-bracketed source with a space
+    // (which the compiler percent-encodes to `my%20file.png`) is looked up via
+    // its decoded key, and a rewritten src genuinely loads inside the
+    // null-origin `allow-scripts` iframe rather than merely having its attribute
+    // swapped.
+    const pngDataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const srcdoc = await buildSrcdoc('![Photo](<my file.png>)', null, '', {
+      'my file.png': pngDataUri,
+    })
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const image = page.frameLocator('iframe').locator('.markdown-body img')
+    await expect(image).toHaveAttribute('src', pngDataUri, { timeout: 30_000 })
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), {
+        timeout: 30_000,
+      })
+      .toBe(true)
+  })
+
   test('shows error message when __mdxRun is not defined', async ({ page }) => {
     const badSrcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>

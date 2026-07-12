@@ -15,7 +15,19 @@ type StepCode = HighlightedCode | HighlightedCode[]
 
 function Image(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   const imageSources = (window as MdxWindow).__mdxImageSources ?? {}
-  const src = typeof props.src === 'string' ? imageSources[props.src] ?? props.src : props.src
+  let src = props.src
+  if (typeof props.src === 'string') {
+    // The plugin keys the map by the decoded source, so decode before looking
+    // up (compiled MDX percent-encodes spaces from angle-bracketed links). Fall
+    // back to the raw src, then to the original value if unresolved.
+    let decoded = props.src
+    try {
+      decoded = decodeURI(props.src)
+    } catch {
+      // Malformed escape — keep the raw src for the lookup.
+    }
+    src = imageSources[decoded] ?? imageSources[props.src] ?? props.src
+  }
 
   return React.createElement('img', { ...props, src })
 }
