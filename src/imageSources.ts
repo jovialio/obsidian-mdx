@@ -63,6 +63,36 @@ export function imageCandidatePaths(src: string, baseDir: string): string[] {
   ]
 }
 
+// Split a source into its query and fragment so they can be re-applied to the
+// resolved resource URL. `imageCandidatePaths` strips these for the filesystem
+// lookup, but they carry meaning at render time (SVG sprite `#id`, PDF
+// `#page=2`, cache-busting `?v=`).
+export function imageSourceSuffix(src: string): { query: string; fragment: string } {
+  let rest = src
+  let fragment = ''
+  const hashIndex = rest.indexOf('#')
+  if (hashIndex >= 0) {
+    fragment = rest.slice(hashIndex + 1)
+    rest = rest.slice(0, hashIndex)
+  }
+  let query = ''
+  const queryIndex = rest.indexOf('?')
+  if (queryIndex >= 0) {
+    query = rest.slice(queryIndex + 1)
+  }
+  return { query, fragment }
+}
+
+// Re-attach a source's query/fragment to a resolved resource URL. Obsidian
+// resource URLs already carry their own `?<cache-token>` query, so an extra
+// query is merged with `&` rather than starting a second `?`.
+export function appendResourceSuffix(url: string, query: string, fragment: string): string {
+  let out = url
+  if (query) out += (url.includes('?') ? '&' : '?') + query
+  if (fragment) out += '#' + fragment
+  return out
+}
+
 // Every image `src` referenced in the source, in document order (with
 // duplicates). External sources (URLs, data URIs, fragments) are dropped.
 export function extractImageSources(source: string): string[] {

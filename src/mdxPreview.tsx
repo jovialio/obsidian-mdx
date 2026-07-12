@@ -3,9 +3,11 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 import {
+  appendResourceSuffix,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
+  imageSourceSuffix,
   isExternalImageSource,
 } from './imageSources'
 
@@ -165,7 +167,12 @@ export class mdxPreview extends TextFileView {
     for (const candidate of imageCandidatePaths(src, baseDir)) {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
-      if (file instanceof TFile) return this.app.vault.getResourcePath(file)
+      if (file instanceof TFile) {
+        // Preserve any query/fragment (SVG sprite id, PDF page, cache-buster)
+        // that the candidate lookup stripped off the path.
+        const { query, fragment } = imageSourceSuffix(src)
+        return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+      }
     }
 
     return null

@@ -162,6 +162,32 @@ test.describe('MDX Preview rendering', () => {
       .toBe(true)
   })
 
+  test('rewrites literal JSX <img> elements that bypass the components map', async ({ page }) => {
+    // Written as JSX, `<img />` compiles to an intrinsic React element and never
+    // reaches `components.img`, so the DOM sweep must catch it.
+    const pngDataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const srcdoc = await buildSrcdoc('<img src="./logo.png" alt="Logo" />', null, '', {
+      './logo.png': pngDataUri,
+    })
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const image = page.frameLocator('iframe').locator('.markdown-body img')
+    await expect(image).toHaveAttribute('src', pngDataUri, { timeout: 30_000 })
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), {
+        timeout: 30_000,
+      })
+      .toBe(true)
+  })
+
   test('shows error message when __mdxRun is not defined', async ({ page }) => {
     const badSrcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>

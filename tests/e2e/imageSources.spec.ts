@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test'
 import {
   ancestorDirs,
+  appendResourceSuffix,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
+  imageSourceSuffix,
   isExternalImageSource,
 } from '../../src/imageSources'
 
@@ -106,5 +108,33 @@ test.describe('imageCandidatePaths', () => {
       'public/images/x.png',
       'images/x.png',
     ])
+  })
+})
+
+test.describe('imageSourceSuffix', () => {
+  test('splits query and fragment', () => {
+    expect(imageSourceSuffix('./sprite.svg#logo')).toEqual({ query: '', fragment: 'logo' })
+    expect(imageSourceSuffix('./img.png?v=2')).toEqual({ query: 'v=2', fragment: '' })
+    expect(imageSourceSuffix('./doc.pdf?a=1#page=2')).toEqual({ query: 'a=1', fragment: 'page=2' })
+    expect(imageSourceSuffix('./plain.png')).toEqual({ query: '', fragment: '' })
+  })
+})
+
+test.describe('appendResourceSuffix', () => {
+  test('merges a query into a resource URL that already has one', () => {
+    expect(appendResourceSuffix('app://local/x.png?1699', 'v=2', '')).toBe(
+      'app://local/x.png?1699&v=2',
+    )
+  })
+
+  test('adds a query when the resource URL has none', () => {
+    expect(appendResourceSuffix('app://local/x.png', 'v=2', '')).toBe('app://local/x.png?v=2')
+  })
+
+  test('appends the fragment and leaves URLs without a suffix untouched', () => {
+    expect(appendResourceSuffix('app://local/sprite.svg?1699', '', 'logo')).toBe(
+      'app://local/sprite.svg?1699#logo',
+    )
+    expect(appendResourceSuffix('app://local/x.png?1699', '', '')).toBe('app://local/x.png?1699')
   })
 })
