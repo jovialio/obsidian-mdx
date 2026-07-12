@@ -13,6 +13,40 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
 // an array of them. Both shapes must be handled.
 type StepCode = HighlightedCode | HighlightedCode[]
 
+// The plugin keys the map by the decoded source, so decode before looking up
+// (compiled MDX percent-encodes spaces from angle-bracketed links). Returns the
+// mapped resource URL, or null when there is nothing to rewrite.
+function mappedImageSource(raw: string, map: Record<string, string>): string | null {
+  let decoded = raw
+  try {
+    decoded = decodeURI(raw)
+  } catch {
+    // Malformed escape — fall back to the raw src for the lookup.
+  }
+  const mapped = map[decoded] ?? map[raw]
+  return mapped && mapped !== raw ? mapped : null
+}
+
+// Rewrite the src of every <img> under `root` from the map. Used for literal
+// JSX <img> tags, which MDX compiles to intrinsic React elements that bypass
+// the `components.img` override below.
+function applyImageSources(root: ParentNode, map: Record<string, string>): void {
+  root.querySelectorAll('img').forEach((img) => {
+    const raw = img.getAttribute('src')
+    if (!raw) return
+    const mapped = mappedImageSource(raw, map)
+    if (mapped) img.setAttribute('src', mapped)
+  })
+}
+
+function Image(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const imageSources = (window as MdxWindow).__mdxImageSources ?? {}
+  const src =
+    typeof props.src === 'string' ? mappedImageSource(props.src, imageSources) ?? props.src : props.src
+
+  return React.createElement('img', { ...props, src })
+}
+
 type ScrollyStep = {
   title?: string
   children?: React.ReactNode
@@ -185,6 +219,7 @@ type MdxWindow = Window & {
   __mdxRun?: MdxRunFn
   __mdxFallbacks?: string[]
   __mdxFrontmatter?: Record<string, unknown> | null
+  __mdxImageSources?: Record<string, string>
 }
 
 try {
@@ -195,6 +230,7 @@ try {
 
   const components: Record<string, unknown> = {
     Code,
+    img: Image,
     Scrollycoding,
     ScrollyCoding: Scrollycoding,
     slot: Slot,
@@ -204,7 +240,17 @@ try {
   }
 
   const frontmatter = win.__mdxFrontmatter
-  createRoot(window.document.getElementById('root') as Element).render(
+  const imageSources = win.__mdxImageSources ?? {}
+  const rootEl = window.document.getElementById('root') as Element
+
+  // Literal JSX <img> tags bypass the components map, and images can also mount
+  // asynchronously, so watch the tree and rewrite any local srcs in the DOM.
+  // setAttribute only mutates attributes, which this observer ignores, so the
+  // rewrite cannot retrigger itself.
+  const imageObserver = new MutationObserver(() => applyImageSources(rootEl, imageSources))
+  imageObserver.observe(rootEl, { childList: true, subtree: true })
+
+  createRoot(rootEl).render(
     React.createElement(
       React.Fragment,
       null,
@@ -212,6 +258,7 @@ try {
       React.createElement('div', { className: 'markdown-body' }, MDXContent({ components }) as never)
     ) as never
   )
+  applyImageSources(rootEl, imageSources)
 } catch (err) {
   const root = window.document.getElementById('root')
   if (root) {

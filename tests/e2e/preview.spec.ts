@@ -27,6 +27,7 @@ async function buildSrcdoc(
   mdx: string,
   frontmatter: Record<string, unknown> | null = null,
   extraStyle = '',
+  imageSources: Record<string, string> = {},
 ): Promise<string> {
   // Mirror the plugin: strip leading YAML frontmatter before compiling.
   const source = mdx.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
@@ -62,6 +63,7 @@ async function buildSrcdoc(
   <div id="root"></div>
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
@@ -99,6 +101,91 @@ test.describe('MDX Preview rendering', () => {
 
     const iframe = page.frameLocator('iframe')
     await expect(iframe.locator('li')).toHaveCount(3, { timeout: 30_000 })
+  })
+
+  test('rewrites local image sources to provided Obsidian resource URLs', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(
+      '![Dashboard](/images/the-reasoning-is-the-product/dashboard.png)',
+      null,
+      '',
+      {
+        '/images/the-reasoning-is-the-product/dashboard.png':
+          'app://local/vault/public/images/the-reasoning-is-the-product/dashboard.png',
+      },
+    )
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.markdown-body img')).toHaveAttribute(
+      'src',
+      'app://local/vault/public/images/the-reasoning-is-the-product/dashboard.png',
+      { timeout: 30_000 },
+    )
+    await expect(iframe.locator('.markdown-body img')).toHaveAttribute('alt', 'Dashboard')
+  })
+
+  test('rewrites and actually loads a spaced angle-bracket image source in the sandbox', async ({
+    page,
+  }) => {
+    // 1x1 PNG. Proves two things at once: an angle-bracketed source with a space
+    // (which the compiler percent-encodes to `my%20file.png`) is looked up via
+    // its decoded key, and a rewritten src genuinely loads inside the
+    // null-origin `allow-scripts` iframe rather than merely having its attribute
+    // swapped.
+    const pngDataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const srcdoc = await buildSrcdoc('![Photo](<my file.png>)', null, '', {
+      'my file.png': pngDataUri,
+    })
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const image = page.frameLocator('iframe').locator('.markdown-body img')
+    await expect(image).toHaveAttribute('src', pngDataUri, { timeout: 30_000 })
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), {
+        timeout: 30_000,
+      })
+      .toBe(true)
+  })
+
+  test('rewrites literal JSX <img> elements that bypass the components map', async ({ page }) => {
+    // Written as JSX, `<img />` compiles to an intrinsic React element and never
+    // reaches `components.img`, so the DOM sweep must catch it.
+    const pngDataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const srcdoc = await buildSrcdoc('<img src="./logo.png" alt="Logo" />', null, '', {
+      './logo.png': pngDataUri,
+    })
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const image = page.frameLocator('iframe').locator('.markdown-body img')
+    await expect(image).toHaveAttribute('src', pngDataUri, { timeout: 30_000 })
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), {
+        timeout: 30_000,
+      })
+      .toBe(true)
   })
 
   test('shows error message when __mdxRun is not defined', async ({ page }) => {

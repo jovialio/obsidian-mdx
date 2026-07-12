@@ -1,7 +1,15 @@
-import { TextFileView, WorkspaceLeaf, parseYaml, setIcon } from 'obsidian'
+import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
+import {
+  appendResourceSuffix,
+  decodeImageSource,
+  extractImageSources,
+  imageCandidatePaths,
+  imageSourceSuffix,
+  isExternalImageSource,
+} from './imageSources'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
@@ -131,6 +139,45 @@ export class mdxPreview extends TextFileView {
     })
   }
 
+  private collectImageSources(source: string): Record<string, string> {
+    const resolved: Record<string, string> = {}
+    // Key by the decoded source so the map matches whatever the compiled MDX
+    // emits: angle-bracketed links with spaces (`![a](<my file.png>)`) come out
+    // percent-encoded, while inline links keep the author's spelling. Decoding
+    // both sides (here and in the renderer) makes the lookup agree either way.
+    const seen = new Set<string>()
+
+    for (const src of extractImageSources(source)) {
+      const key = decodeImageSource(src)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const resourcePath = this.resolveImageSource(src)
+      if (resourcePath) resolved[key] = resourcePath
+    }
+
+    return resolved
+  }
+
+  private resolveImageSource(src: string): string | null {
+    if (isExternalImageSource(src)) return null
+
+    const fileDir = this.file?.parent?.path
+    const baseDir = fileDir && fileDir !== '/' ? fileDir : ''
+
+    for (const candidate of imageCandidatePaths(src, baseDir)) {
+      const normalized = normalizePath(candidate)
+      const file = this.app.vault.getAbstractFileByPath(normalized)
+      if (file instanceof TFile) {
+        // Preserve any query/fragment (SVG sprite id, PDF page, cache-buster)
+        // that the candidate lookup stripped off the path.
+        const { query, fragment } = imageSourceSuffix(src)
+        return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+      }
+    }
+
+    return null
+  }
+
   private async renderPreview() {
     if (!consentGiven) {
       this.showConsentBanner()
@@ -163,6 +210,7 @@ export class mdxPreview extends TextFileView {
       }
     }
     const source = fmMatch ? this._content.slice(fmMatch[0].length) : this._content
+    const imageSources = this.collectImageSources(source)
 
     let compiledBody: string
     try {
@@ -275,6 +323,7 @@ export class mdxPreview extends TextFileView {
   <div id="root"></div>
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
