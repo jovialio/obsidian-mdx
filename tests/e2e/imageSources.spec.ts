@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test'
 import {
   ancestorDirs,
-  appendObjectUrlFragment,
+  appendDataUrlFragment,
   appendResourceSuffix,
+  arrayBufferToDataUrl,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
@@ -141,19 +142,24 @@ test.describe('appendResourceSuffix', () => {
   })
 })
 
-test.describe('object URL helpers', () => {
+test.describe('data URL helpers', () => {
   test('detects common image mime types from paths', () => {
     expect(imageMimeTypeForPath('public/images/photo.JPG')).toBe('image/jpeg')
     expect(imageMimeTypeForPath('diagram.svg#layer')).toBe('image/svg+xml')
     expect(imageMimeTypeForPath('asset.unknown')).toBe('application/octet-stream')
   })
 
+  test('encodes an ArrayBuffer as a data URL', () => {
+    const buffer = new Uint8Array([104, 105]).buffer
+    expect(arrayBufferToDataUrl(buffer, 'text/plain')).toBe('data:text/plain;base64,aGk=')
+  })
+
   test('preserves fragments without adding obsolete cache-buster queries', () => {
-    expect(appendObjectUrlFragment('blob:app://obsidian.md/123', 'logo')).toBe(
-      'blob:app://obsidian.md/123#logo',
+    expect(appendDataUrlFragment('data:image/svg+xml;base64,PHN2Zz4=', 'logo')).toBe(
+      'data:image/svg+xml;base64,PHN2Zz4=#logo',
     )
-    expect(appendObjectUrlFragment('blob:app://obsidian.md/123', '')).toBe(
-      'blob:app://obsidian.md/123',
+    expect(appendDataUrlFragment('data:image/png;base64,aGk=', '')).toBe(
+      'data:image/png;base64,aGk=',
     )
   })
 })

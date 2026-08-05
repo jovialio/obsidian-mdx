@@ -3,8 +3,9 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 import {
-  appendObjectUrlFragment,
+  appendDataUrlFragment,
   appendResourceSuffix,
+  arrayBufferToDataUrl,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
@@ -29,7 +30,9 @@ export class mdxPreview extends TextFileView {
   private _content = ''
   private _renderTimer: number | null = null
   private _renderGeneration = 0
-  private _objectUrlCache = new Map<string, { mtime: number; url: string }>()
+  // Cache encoded data URLs by vault path so debounced re-renders don't re-read
+  // and re-encode unchanged images; keyed with mtime so edits are picked up.
+  private _dataUrlCache = new Map<string, { mtime: number; url: string }>()
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -68,15 +71,8 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
-    this.revokeCachedObjectUrls()
+    this._dataUrlCache.clear()
     this.editorEl = null
-  }
-
-  private revokeCachedObjectUrls(): void {
-    for (const { url } of this._objectUrlCache.values()) {
-      URL.revokeObjectURL(url)
-    }
-    this._objectUrlCache.clear()
   }
 
   private toggleMode(): void {
@@ -179,14 +175,20 @@ export class mdxPreview extends TextFileView {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
       if (file instanceof TFile) {
+        // The preview runs in a sandboxed, null-origin iframe. Both `app://`
+        // resource URLs and host-created `blob:` object URLs are scoped to
+        // Obsidian's origin, so neither loads inside that iframe. An inline
+        // data URL carries no origin and always renders. Fall back to the
+        // resource URL only for MIME types we can't name (which would produce a
+        // non-renderable data URL) or if the vault bytes can't be read.
         const { query, fragment } = imageSourceSuffix(src)
         const resourceUrl = () => appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
         const mimeType = imageMimeTypeForPath(file.path)
         if (mimeType === 'application/octet-stream') return resourceUrl()
 
         try {
-          const objectUrl = await this.objectUrlForImage(file, mimeType)
-          return appendObjectUrlFragment(objectUrl, fragment)
+          const dataUrl = await this.dataUrlForImage(file, mimeType)
+          return appendDataUrlFragment(dataUrl, fragment)
         } catch {
           return resourceUrl()
         }
@@ -196,18 +198,15 @@ export class mdxPreview extends TextFileView {
     return null
   }
 
-  private async objectUrlForImage(file: TFile, mimeType: string): Promise<string> {
-    const cached = this._objectUrlCache.get(file.path)
+  private async dataUrlForImage(file: TFile, mimeType: string): Promise<string> {
+    const cached = this._dataUrlCache.get(file.path)
     if (cached && cached.mtime === file.stat.mtime) return cached.url
 
-    if (cached) URL.revokeObjectURL(cached.url)
-
-    // Host-created blob URLs keep the raw vault bytes out of the sandbox's
-    // script-readable globals while avoiding repeated read/encode work during
-    // debounced preview renders.
+    // Encoding is skipped on cache hits so debounced re-renders of an unchanged
+    // note don't re-read the file bytes or re-run base64.
     const buffer = await this.app.vault.readBinary(file)
-    const url = URL.createObjectURL(new Blob([buffer], { type: mimeType }))
-    this._objectUrlCache.set(file.path, { mtime: file.stat.mtime, url })
+    const url = arrayBufferToDataUrl(buffer, mimeType)
+    this._dataUrlCache.set(file.path, { mtime: file.stat.mtime, url })
     return url
   }
 
@@ -381,7 +380,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
-    this.revokeCachedObjectUrls()
+    this._dataUrlCache.clear()
     this.editorEl = null
   }
 }

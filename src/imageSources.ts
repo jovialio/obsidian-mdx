@@ -93,7 +93,7 @@ export function appendResourceSuffix(url: string, query: string, fragment: strin
   return out
 }
 
-export function appendObjectUrlFragment(url: string, fragment: string): string {
+export function appendDataUrlFragment(url: string, fragment: string): string {
   return fragment ? url + '#' + fragment : url
 }
 
@@ -119,6 +119,28 @@ export function imageMimeTypeForPath(path: string): string {
     default:
       return 'application/octet-stream'
   }
+}
+
+// Encode an image's bytes as a base64 `data:` URL. Data URLs are self-contained
+// and carry no origin, so unlike `app://` resource URLs or `blob:` object URLs
+// (both scoped to the host's origin) they load inside the preview's null-origin
+// `sandbox="allow-scripts"` iframe. Bytes are walked in chunks so a large image
+// never overflows the call stack the way `String.fromCharCode(...bytes)` would.
+export function arrayBufferToDataUrl(buffer: ArrayBuffer, mimeType: string): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    let chunkString = ''
+    for (let j = 0; j < chunk.length; j++) {
+      chunkString += String.fromCharCode(chunk[j])
+    }
+    binary += chunkString
+  }
+
+  return `data:${mimeType};base64,${btoa(binary)}`
 }
 
 // Every image `src` referenced in the source, in document order (with
