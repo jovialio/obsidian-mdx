@@ -136,7 +136,7 @@ export class mdxPreview extends TextFileView {
     const banner = container.createDiv({ cls: 'mdx-consent' })
     banner.createEl('strong', { text: 'MDX executes JavaScript' })
     banner.createEl('p', {
-      text: 'Scripts run in a sandboxed iframe with no access to your vault or Obsidian APIs. However, they can make outbound network requests. Only preview files you trust.',
+      text: 'Scripts run in a sandboxed iframe with no access to Obsidian APIs or arbitrary vault files. However, they can make outbound network requests, and any vault image this file references is embedded so its scripts can read it. Only preview files you trust.',
     })
     const btn = banner.createEl('button', { text: 'Enable MDX Preview' })
     btn.addEventListener('click', () => {
