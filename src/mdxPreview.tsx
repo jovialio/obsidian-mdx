@@ -3,10 +3,13 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 import {
+  appendDataUrlFragment,
   appendResourceSuffix,
+  arrayBufferToDataUrl,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
+  imageMimeTypeForPath,
   imageSourceSuffix,
   isExternalImageSource,
 } from './imageSources'
@@ -139,7 +142,7 @@ export class mdxPreview extends TextFileView {
     })
   }
 
-  private collectImageSources(source: string): Record<string, string> {
+  private async collectImageSources(source: string): Promise<Record<string, string>> {
     const resolved: Record<string, string> = {}
     // Key by the decoded source so the map matches whatever the compiled MDX
     // emits: angle-bracketed links with spaces (`![a](<my file.png>)`) come out
@@ -151,14 +154,14 @@ export class mdxPreview extends TextFileView {
       const key = decodeImageSource(src)
       if (seen.has(key)) continue
       seen.add(key)
-      const resourcePath = this.resolveImageSource(src)
+      const resourcePath = await this.resolveImageSource(src)
       if (resourcePath) resolved[key] = resourcePath
     }
 
     return resolved
   }
 
-  private resolveImageSource(src: string): string | null {
+  private async resolveImageSource(src: string): Promise<string | null> {
     if (isExternalImageSource(src)) return null
 
     const fileDir = this.file?.parent?.path
@@ -168,10 +171,18 @@ export class mdxPreview extends TextFileView {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
       if (file instanceof TFile) {
-        // Preserve any query/fragment (SVG sprite id, PDF page, cache-buster)
-        // that the candidate lookup stripped off the path.
+        // The preview runs in a sandboxed iframe. Desktop Obsidian may block
+        // app:// resource URLs inside that null-origin iframe, so prefer an
+        // inline data URL and fall back to Obsidian's resource URL only if the
+        // vault adapter cannot read the image bytes.
         const { query, fragment } = imageSourceSuffix(src)
-        return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+        try {
+          const buffer = await this.app.vault.readBinary(file)
+          const dataUrl = arrayBufferToDataUrl(buffer, imageMimeTypeForPath(file.path))
+          return appendDataUrlFragment(dataUrl, fragment)
+        } catch {
+          return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+        }
       }
     }
 
@@ -210,7 +221,7 @@ export class mdxPreview extends TextFileView {
       }
     }
     const source = fmMatch ? this._content.slice(fmMatch[0].length) : this._content
-    const imageSources = this.collectImageSources(source)
+    const imageSources = await this.collectImageSources(source)
 
     let compiledBody: string
     try {
