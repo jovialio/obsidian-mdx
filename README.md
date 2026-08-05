@@ -19,6 +19,7 @@ Most MDX-related plugins for Obsidian only handle **editing** — they register 
 - **Sandboxed execution** — MDX JavaScript runs in a null-origin `sandbox="allow-scripts"` iframe with no access to your vault or Obsidian APIs
 - **Session consent gate** — you confirm once per session before any MDX JavaScript runs
 - **Offline** — the renderer is bundled at build time; no CDN calls are made at runtime
+- **Local image previews** — markdown and JSX images stored in the vault, including project-style `/images/...` paths backed by a nearby `public/` folder, render in desktop and mobile preview
 - **Auto-open** — `.mdx` files open directly in the preview view, no command palette step needed
 - **Debounced live reload** — preview updates 400 ms after you stop typing
 
