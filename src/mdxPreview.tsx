@@ -3,10 +3,13 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 import {
+  appendDataUrlFragment,
   appendResourceSuffix,
+  arrayBufferToDataUrl,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
+  imageMimeTypeForPath,
   imageSourceSuffix,
   isExternalImageSource,
 } from './imageSources'
@@ -27,6 +30,9 @@ export class mdxPreview extends TextFileView {
   private _content = ''
   private _renderTimer: number | null = null
   private _renderGeneration = 0
+  // Cache encoded data URLs by vault path so debounced re-renders don't re-read
+  // and re-encode unchanged images; keyed with mtime so edits are picked up.
+  private _dataUrlCache = new Map<string, { mtime: number; url: string }>()
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -65,6 +71,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this._dataUrlCache.clear()
     this.editorEl = null
   }
 
@@ -129,7 +136,7 @@ export class mdxPreview extends TextFileView {
     const banner = container.createDiv({ cls: 'mdx-consent' })
     banner.createEl('strong', { text: 'MDX executes JavaScript' })
     banner.createEl('p', {
-      text: 'Scripts run in a sandboxed iframe with no access to your vault or Obsidian APIs. However, they can make outbound network requests. Only preview files you trust.',
+      text: 'Scripts run in a sandboxed iframe with no access to Obsidian APIs or arbitrary vault files. However, they can make outbound network requests, and any vault image this file references is embedded so its scripts can read it. Only preview files you trust.',
     })
     const btn = banner.createEl('button', { text: 'Enable MDX Preview' })
     btn.addEventListener('click', () => {
@@ -139,7 +146,7 @@ export class mdxPreview extends TextFileView {
     })
   }
 
-  private collectImageSources(source: string): Record<string, string> {
+  private async collectImageSources(source: string): Promise<Record<string, string>> {
     const resolved: Record<string, string> = {}
     // Key by the decoded source so the map matches whatever the compiled MDX
     // emits: angle-bracketed links with spaces (`![a](<my file.png>)`) come out
@@ -151,14 +158,14 @@ export class mdxPreview extends TextFileView {
       const key = decodeImageSource(src)
       if (seen.has(key)) continue
       seen.add(key)
-      const resourcePath = this.resolveImageSource(src)
+      const resourcePath = await this.resolveImageSource(src)
       if (resourcePath) resolved[key] = resourcePath
     }
 
     return resolved
   }
 
-  private resolveImageSource(src: string): string | null {
+  private async resolveImageSource(src: string): Promise<string | null> {
     if (isExternalImageSource(src)) return null
 
     const fileDir = this.file?.parent?.path
@@ -168,14 +175,39 @@ export class mdxPreview extends TextFileView {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
       if (file instanceof TFile) {
-        // Preserve any query/fragment (SVG sprite id, PDF page, cache-buster)
-        // that the candidate lookup stripped off the path.
+        // The preview runs in a sandboxed, null-origin iframe. Both `app://`
+        // resource URLs and host-created `blob:` object URLs are scoped to
+        // Obsidian's origin, so neither loads inside that iframe. An inline
+        // data URL carries no origin and always renders. Fall back to the
+        // resource URL only for MIME types we can't name (which would produce a
+        // non-renderable data URL) or if the vault bytes can't be read.
         const { query, fragment } = imageSourceSuffix(src)
-        return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+        const resourceUrl = () => appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+        const mimeType = imageMimeTypeForPath(file.path)
+        if (mimeType === 'application/octet-stream') return resourceUrl()
+
+        try {
+          const dataUrl = await this.dataUrlForImage(file, mimeType)
+          return appendDataUrlFragment(dataUrl, fragment)
+        } catch {
+          return resourceUrl()
+        }
       }
     }
 
     return null
+  }
+
+  private async dataUrlForImage(file: TFile, mimeType: string): Promise<string> {
+    const cached = this._dataUrlCache.get(file.path)
+    if (cached && cached.mtime === file.stat.mtime) return cached.url
+
+    // Encoding is skipped on cache hits so debounced re-renders of an unchanged
+    // note don't re-read the file bytes or re-run base64.
+    const buffer = await this.app.vault.readBinary(file)
+    const url = arrayBufferToDataUrl(buffer, mimeType)
+    this._dataUrlCache.set(file.path, { mtime: file.stat.mtime, url })
+    return url
   }
 
   private async renderPreview() {
@@ -210,7 +242,7 @@ export class mdxPreview extends TextFileView {
       }
     }
     const source = fmMatch ? this._content.slice(fmMatch[0].length) : this._content
-    const imageSources = this.collectImageSources(source)
+    const imageSources = await this.collectImageSources(source)
 
     let compiledBody: string
     try {
@@ -348,6 +380,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this._dataUrlCache.clear()
     this.editorEl = null
   }
 }

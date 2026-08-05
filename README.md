@@ -19,6 +19,7 @@ Most MDX-related plugins for Obsidian only handle **editing** — they register 
 - **Sandboxed execution** — MDX JavaScript runs in a null-origin `sandbox="allow-scripts"` iframe with no access to your vault or Obsidian APIs
 - **Session consent gate** — you confirm once per session before any MDX JavaScript runs
 - **Offline** — the renderer is bundled at build time; no CDN calls are made at runtime
+- **Local image previews** — markdown and JSX images stored in the vault, including project-style `/images/...` paths backed by a nearby `public/` folder, render in desktop and mobile preview
 - **Auto-open** — `.mdx` files open directly in the preview view, no command palette step needed
 - **Debounced live reload** — preview updates 400 ms after you stop typing
 
@@ -70,6 +71,7 @@ MDX is executable JavaScript. This plugin takes several steps to limit the blast
 - No `eval()` or `new Function()` is used — the compiled MDX function body is embedded directly as a `<script>` tag, which is the same model browsers use for normal scripts
 - The consent gate resets on every Obsidian restart, so you are always in control of when MDX JavaScript runs
 - Outbound network requests from inside the iframe are still possible (this is a browser constraint, not something a plugin can block). Only preview files you trust.
+- **Local images are embedded, so a file's scripts can read the images that file references.** To display vault images, the plugin inlines them as `data:` URLs — the only image form that loads in a null-origin sandbox (`app://` resource URLs and host-created `blob:` URLs are both origin-scoped and are blocked there). Because the image bytes live in the same iframe as the MDX JavaScript, a script can read the bytes of any vault image the file names (including a path it guesses) and send them over the network. This does not expose arbitrary vault files — only images the previewed file explicitly references — but it is why the rule above holds: only preview files you trust.
 
 ## Development
 
