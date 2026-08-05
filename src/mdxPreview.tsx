@@ -3,9 +3,8 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import rendererScript from 'renderer-script'
 import {
-  appendDataUrlFragment,
+  appendObjectUrlFragment,
   appendResourceSuffix,
-  arrayBufferToDataUrl,
   decodeImageSource,
   extractImageSources,
   imageCandidatePaths,
@@ -30,6 +29,7 @@ export class mdxPreview extends TextFileView {
   private _content = ''
   private _renderTimer: number | null = null
   private _renderGeneration = 0
+  private _objectUrlCache = new Map<string, { mtime: number; url: string }>()
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -68,7 +68,15 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.revokeCachedObjectUrls()
     this.editorEl = null
+  }
+
+  private revokeCachedObjectUrls(): void {
+    for (const { url } of this._objectUrlCache.values()) {
+      URL.revokeObjectURL(url)
+    }
+    this._objectUrlCache.clear()
   }
 
   private toggleMode(): void {
@@ -171,22 +179,36 @@ export class mdxPreview extends TextFileView {
       const normalized = normalizePath(candidate)
       const file = this.app.vault.getAbstractFileByPath(normalized)
       if (file instanceof TFile) {
-        // The preview runs in a sandboxed iframe. Desktop Obsidian may block
-        // app:// resource URLs inside that null-origin iframe, so prefer an
-        // inline data URL and fall back to Obsidian's resource URL only if the
-        // vault adapter cannot read the image bytes.
         const { query, fragment } = imageSourceSuffix(src)
+        const resourceUrl = () => appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+        const mimeType = imageMimeTypeForPath(file.path)
+        if (mimeType === 'application/octet-stream') return resourceUrl()
+
         try {
-          const buffer = await this.app.vault.readBinary(file)
-          const dataUrl = arrayBufferToDataUrl(buffer, imageMimeTypeForPath(file.path))
-          return appendDataUrlFragment(dataUrl, fragment)
+          const objectUrl = await this.objectUrlForImage(file, mimeType)
+          return appendObjectUrlFragment(objectUrl, fragment)
         } catch {
-          return appendResourceSuffix(this.app.vault.getResourcePath(file), query, fragment)
+          return resourceUrl()
         }
       }
     }
 
     return null
+  }
+
+  private async objectUrlForImage(file: TFile, mimeType: string): Promise<string> {
+    const cached = this._objectUrlCache.get(file.path)
+    if (cached && cached.mtime === file.stat.mtime) return cached.url
+
+    if (cached) URL.revokeObjectURL(cached.url)
+
+    // Host-created blob URLs keep the raw vault bytes out of the sandbox's
+    // script-readable globals while avoiding repeated read/encode work during
+    // debounced preview renders.
+    const buffer = await this.app.vault.readBinary(file)
+    const url = URL.createObjectURL(new Blob([buffer], { type: mimeType }))
+    this._objectUrlCache.set(file.path, { mtime: file.stat.mtime, url })
+    return url
   }
 
   private async renderPreview() {
@@ -359,6 +381,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.revokeCachedObjectUrls()
     this.editorEl = null
   }
 }
