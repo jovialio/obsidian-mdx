@@ -1,6 +1,6 @@
 # MDX Preview
 
-Preview [MDX](https://mdxjs.com/) files in [Obsidian](https://obsidian.md), with first-class support for [Code Hike](https://codehike.org) — scrollycoding, code annotations, focus lines, and compile-time syntax highlighting.
+Preview [MDX](https://mdxjs.com/) files in [Obsidian](https://obsidian.md), with first-class support for [Code Hike](https://codehike.org) — scrollycoding, code annotations, focus lines, and compile-time syntax highlighting — plus [Mermaid](https://mermaid.js.org/) diagrams.
 
 Forked from [yulei-chen/obsidian-mdx](https://github.com/yulei-chen/obsidian-mdx) and rewritten with a security-first architecture, mobile compatibility, and offline rendering.
 
@@ -15,6 +15,7 @@ Most MDX-related plugins for Obsidian only handle **editing** — they register 
 ## Features
 
 - **Code Hike rendering** — scrollycoding, `!focus`, `!mark`, `!diff`, and all Code Hike annotations work out of the box
+- **Mermaid diagrams** — `mermaid` code fences render as SVG diagrams, with per-diagram errors for invalid syntax
 - **Compile-time syntax highlighting** — powered by [Code Hike](https://codehike.org) (whose `@code-hike/lighter` highlighter is pure JavaScript with no native dependencies), so it works on iOS and Android
 - **Sandboxed execution** — MDX JavaScript runs in a null-origin `sandbox="allow-scripts"` iframe with no access to your vault or Obsidian APIs
 - **Session consent gate** — you confirm once per session before any MDX JavaScript runs
@@ -63,6 +64,18 @@ function greet(name) {
 
 For a full scrollycoding example, see the [Code Hike vite example](https://github.com/code-hike/codehike/blob/next/examples/vite/src/hello.mdx).
 
+### Mermaid example
+
+Mermaid fences render as diagrams in preview:
+
+````mdx
+```mermaid
+flowchart TD
+  A[Draft MDX] --> B[Preview in Obsidian]
+  B --> C[Publish]
+```
+````
+
 ## Security model
 
 MDX is executable JavaScript. This plugin takes several steps to limit the blast radius:
@@ -72,6 +85,7 @@ MDX is executable JavaScript. This plugin takes several steps to limit the blast
 - The consent gate resets on every Obsidian restart, so you are always in control of when MDX JavaScript runs
 - Outbound network requests from inside the iframe are still possible (this is a browser constraint, not something a plugin can block). Only preview files you trust.
 - **Local images are embedded, so a file's scripts can read the images that file references.** To display vault images, the plugin inlines them as `data:` URLs — the only image form that loads in a null-origin sandbox (`app://` resource URLs and host-created `blob:` URLs are both origin-scoped and are blocked there). Because the image bytes live in the same iframe as the MDX JavaScript, a script can read the bytes of any vault image the file names (including a path it guesses) and send them over the network. This does not expose arbitrary vault files — only images the previewed file explicitly references — but it is why the rule above holds: only preview files you trust.
+- Mermaid SVG output is generated inside the same sandboxed iframe with Mermaid's strict security mode. Invalid diagrams render a local error block instead of breaking the whole preview.
 
 ## Development
 
@@ -91,7 +105,7 @@ To see changes in Obsidian itself, symlink (or copy) `manifest.json`, `main.js`,
 pnpm test   # playwright test
 ```
 
-[tests/e2e/preview.spec.ts](tests/e2e/preview.spec.ts) doesn't launch real Obsidian. It bundles `src/renderer.tsx` standalone with esbuild, compiles sample MDX through the same `@mdx-js/mdx` + `codehike/mdx` pipeline the plugin uses at runtime, and injects both into a sandboxed `srcdoc` iframe on a Playwright page, then asserts against the rendered DOM. This covers the renderer and MDX-compile pipeline in isolation — `src/main.ts` and `src/mdxPreview.tsx` (the Obsidian view wrapper) aren't exercised by these tests, so verifying those needs the manual vault loop above.
+[tests/e2e/preview.spec.ts](tests/e2e/preview.spec.ts) doesn't launch real Obsidian. It bundles the iframe renderer scripts with esbuild, compiles sample MDX through the same `@mdx-js/mdx` + `codehike/mdx` pipeline the plugin uses at runtime, and injects them into a sandboxed `srcdoc` iframe on a Playwright page, then asserts against the rendered DOM. This covers the renderer and MDX-compile pipeline in isolation — `src/main.ts` and `src/mdxPreview.tsx` (the Obsidian view wrapper) aren't exercised by these tests, so verifying those needs the manual vault loop above.
 
 If Playwright reports a missing browser, run `pnpm exec playwright install chromium` once.
 

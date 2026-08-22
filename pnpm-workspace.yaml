@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+# Mermaid pulls newer d3 type packages; keep this parser-compatible with the
+# repo's TypeScript 4.7 gate until the project can move to a newer TS version.
+overrides:
+  '@types/d3-dispatch': 3.0.6

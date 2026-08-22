@@ -8,6 +8,83 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
+let mermaidRenderId = 0
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const [svg, setSvg] = React.useState('')
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    const renderId = `mdx-mermaid-${++mermaidRenderId}`
+
+    setSvg('')
+    setError(null)
+    const win = window as MdxWindow
+    const renderMermaid = win.__mdxRenderMermaid
+    if (!renderMermaid) {
+      setError('Mermaid renderer did not load')
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void renderMermaid(renderId, chart, win.__mdxMermaidTheme ?? {})
+      .then((result) => {
+        if (cancelled) return
+        setSvg(result.svg)
+        window.requestAnimationFrame(() => {
+          if (!cancelled && containerRef.current) result.bindFunctions?.(containerRef.current)
+        })
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(String(err))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [chart])
+
+  if (error) {
+    return React.createElement('pre', { className: 'mdx-mermaid-error' }, `Mermaid Error: ${error}`)
+  }
+
+  return React.createElement('div', {
+    'aria-busy': svg ? undefined : 'true',
+    className: 'mdx-mermaid',
+    dangerouslySetInnerHTML: { __html: svg },
+    ref: containerRef,
+  })
+}
+
+function codeText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children
+  if (typeof children === 'number') return String(children)
+  if (Array.isArray(children)) return children.map(codeText).join('')
+  if (React.isValidElement(children)) return codeText(children.props.children)
+  return ''
+}
+
+function isMermaidCodeElement(child: React.ReactNode): child is React.ReactElement {
+  if (!React.isValidElement(child)) return false
+  const className = child.props.className
+  return typeof className === 'string' && /\blanguage-mermaid\b/.test(className)
+}
+
+function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
+  const children = props.children
+  if (React.Children.count(children) === 1) {
+    const child = React.Children.only(children)
+    if (isMermaidCodeElement(child)) {
+      return React.createElement(MermaidDiagram, { chart: codeText(child.props.children).trim() })
+    }
+  }
+
+  return React.createElement('pre', props, children)
+}
+
 // A step's code can be a single highlighted block or, when the author uses
 // Code Hike's multi-value marker (!!code) to show several files in one step,
 // an array of them. Both shapes must be handled.
@@ -217,9 +294,15 @@ function FrontmatterTable({ data }: { data: Record<string, unknown> }) {
 type MdxRunFn = (r: Record<string, unknown>) => { default: (p: Record<string, unknown>) => unknown }
 type MdxWindow = Window & {
   __mdxRun?: MdxRunFn
+  __mdxRenderMermaid?: (
+    id: string,
+    chart: string,
+    themeVariables: Record<string, string>,
+  ) => Promise<{ svg: string; bindFunctions?: (element: Element) => void }>
   __mdxFallbacks?: string[]
   __mdxFrontmatter?: Record<string, unknown> | null
   __mdxImageSources?: Record<string, string>
+  __mdxMermaidTheme?: Record<string, string>
 }
 
 try {
@@ -231,6 +314,7 @@ try {
   const components: Record<string, unknown> = {
     Code,
     img: Image,
+    pre: MarkdownPre,
     Scrollycoding,
     ScrollyCoding: Scrollycoding,
     slot: Slot,

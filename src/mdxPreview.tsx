@@ -1,6 +1,8 @@
 import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
+import type { CodeHikeConfig } from 'codehike/mdx'
+import mermaidRendererScript from 'mermaid-renderer-script'
 import rendererScript from 'renderer-script'
 import {
   appendDataUrlFragment,
@@ -21,6 +23,15 @@ export const MDX_PREVIEW = 'mdx-preview'
 // any MDX JavaScript runs, since allow-scripts lets iframe code make
 // outbound requests even though vault/parent APIs are blocked.
 let consentGiven = false
+
+const chConfig: CodeHikeConfig = {
+  components: { code: 'Code' },
+  syntaxHighlighting: { theme: 'github-dark' },
+  // Mermaid has its own syntax and no Code Hike grammar in this renderer. Leave
+  // it as a normal Markdown fence so previewing a post with diagrams does not
+  // blank the whole MDX document.
+  ignoreCode: (codeblock) => codeblock.lang === 'mermaid',
+}
 
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
@@ -220,11 +231,6 @@ export class mdxPreview extends TextFileView {
     // can detect it has been superseded and skip the DOM update.
     const generation = ++this._renderGeneration
 
-    const chConfig = {
-      components: { code: 'Code' },
-      syntaxHighlighting: { theme: 'github-dark' },
-    }
-
     // MDX has no built-in frontmatter support, so a leading --- ... --- block
     // would otherwise render as literal text. Pull it out and parse it so the
     // renderer can show it as a properties table (like Obsidian's reading
@@ -272,6 +278,7 @@ export class mdxPreview extends TextFileView {
         ),
       ),
     ]
+    const hasMermaid = /\blanguage-mermaid\b/.test(compiledBody)
 
     // Compiled MDX is embedded as a regular function definition so the renderer
     // can call it directly — no eval() or new Function() required.
@@ -294,6 +301,22 @@ export class mdxPreview extends TextFileView {
     const border = cssValue('--background-modifier-border', '#d0d0d0')
     const muted = cssValue('--text-muted', '#8a8a8a')
     const codeBg = cssValue('--background-secondary', '#f2f2f2')
+    const mermaidTheme = {
+      background: bg,
+      mainBkg: codeBg,
+      primaryColor: codeBg,
+      primaryTextColor: fg,
+      primaryBorderColor: border,
+      secondaryColor: bg,
+      tertiaryColor: codeBg,
+      textColor: fg,
+      lineColor: muted,
+      nodeBorder: border,
+      clusterBkg: bg,
+      clusterBorder: border,
+      edgeLabelBackground: bg,
+      fontFamily: font,
+    }
 
     // GitHub-style reading layout: a constrained, centered column with generous
     // spacing and clear heading/table/quote styling, all derived from the active
@@ -323,6 +346,10 @@ export class mdxPreview extends TextFileView {
     .markdown-body tr:nth-child(2n) { background: ${codeBg}; }
     .markdown-body :not(pre) > code { padding: .2em .4em; font-size: 85%; background: ${codeBg}; border-radius: 6px; }
     .markdown-body pre { margin: 0 0 16px; border-radius: 6px; overflow: auto; }
+    .mdx-mermaid { margin: 0 0 16px; overflow: auto; text-align: center; }
+    .mdx-mermaid[aria-busy="true"] { min-height: 80px; }
+    .mdx-mermaid svg { max-width: 100%; height: auto; }
+    .mdx-mermaid-error { margin: 0 0 16px; padding: 12px; border: 1px solid #ff5555; border-radius: 6px; color: #ff5555; background: ${codeBg}; white-space: pre-wrap; }
     .mdx-error { color: #ff5555; white-space: pre-wrap; font-family: monospace; }
     .mdx-fallback { border: 1px solid ${accent}; border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
     .mdx-fallback-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 6px; font-size: 0.8em; }
@@ -356,6 +383,8 @@ export class mdxPreview extends TextFileView {
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxMermaidTheme = ${JSON.stringify(mermaidTheme).replace(/<\/script/gi, '<\\/script')}</script>
+  ${hasMermaid ? `<script>${mermaidRendererScript}</script>` : ''}
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
