@@ -1,7 +1,7 @@
 {
   "name": "mdx-preview",
-  "version": "0.1.16",
-  "description": "Preview MDX in Obsidian, with support for Code Hike",
+  "version": "0.1.17",
+  "description": "Preview MDX in Obsidian, with support for Code Hike and Mermaid",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
