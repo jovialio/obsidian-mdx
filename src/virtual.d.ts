@@ -10,3 +10,7 @@ declare module 'renderer-script' {
   export default content
 }
 
+declare module 'mermaid-renderer-script' {
+  const content: string
+  export default content
+}

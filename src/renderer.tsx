@@ -3,24 +3,12 @@ import * as runtime from 'react/jsx-runtime'
 import { createRoot } from 'react-dom/client'
 import { Pre } from 'codehike/code'
 import type { HighlightedCode } from 'codehike/code'
-import mermaid from 'mermaid'
-import type { MermaidConfig } from 'mermaid'
 
 function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
 let mermaidRenderId = 0
-
-function mermaidConfig(): MermaidConfig {
-  const themeVariables = (window as MdxWindow).__mdxMermaidTheme ?? {}
-  return {
-    startOnLoad: false,
-    securityLevel: 'strict',
-    theme: 'base',
-    themeVariables,
-  }
-}
 
 function MermaidDiagram({ chart }: { chart: string }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
@@ -33,9 +21,16 @@ function MermaidDiagram({ chart }: { chart: string }) {
 
     setSvg('')
     setError(null)
-    mermaid.initialize(mermaidConfig())
-    void mermaid
-      .render(renderId, chart)
+    const win = window as MdxWindow
+    const renderMermaid = win.__mdxRenderMermaid
+    if (!renderMermaid) {
+      setError('Mermaid renderer did not load')
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void renderMermaid(renderId, chart, win.__mdxMermaidTheme ?? {})
       .then((result) => {
         if (cancelled) return
         setSvg(result.svg)
@@ -88,10 +83,6 @@ function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
   }
 
   return React.createElement('pre', props, children)
-}
-
-function MarkdownCode(props: React.HTMLAttributes<HTMLElement>) {
-  return React.createElement('code', props, props.children)
 }
 
 // A step's code can be a single highlighted block or, when the author uses
@@ -303,6 +294,11 @@ function FrontmatterTable({ data }: { data: Record<string, unknown> }) {
 type MdxRunFn = (r: Record<string, unknown>) => { default: (p: Record<string, unknown>) => unknown }
 type MdxWindow = Window & {
   __mdxRun?: MdxRunFn
+  __mdxRenderMermaid?: (
+    id: string,
+    chart: string,
+    themeVariables: Record<string, string>,
+  ) => Promise<{ svg: string; bindFunctions?: (element: Element) => void }>
   __mdxFallbacks?: string[]
   __mdxFrontmatter?: Record<string, unknown> | null
   __mdxImageSources?: Record<string, string>
@@ -319,7 +315,6 @@ try {
     Code,
     img: Image,
     pre: MarkdownPre,
-    code: MarkdownCode,
     Scrollycoding,
     ScrollyCoding: Scrollycoding,
     slot: Slot,

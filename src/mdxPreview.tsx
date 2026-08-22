@@ -2,6 +2,7 @@ import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon }
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import type { CodeHikeConfig } from 'codehike/mdx'
+import mermaidRendererScript from 'mermaid-renderer-script'
 import rendererScript from 'renderer-script'
 import {
   appendDataUrlFragment,
@@ -277,6 +278,7 @@ export class mdxPreview extends TextFileView {
         ),
       ),
     ]
+    const hasMermaid = /\blanguage-mermaid\b/.test(compiledBody)
 
     // Compiled MDX is embedded as a regular function definition so the renderer
     // can call it directly — no eval() or new Function() required.
@@ -382,6 +384,7 @@ export class mdxPreview extends TextFileView {
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxMermaidTheme = ${JSON.stringify(mermaidTheme).replace(/<\/script/gi, '<\\/script')}</script>
+  ${hasMermaid ? `<script>${mermaidRendererScript}</script>` : ''}
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>

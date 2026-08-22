@@ -5,6 +5,7 @@ import type { CodeHikeConfig } from 'codehike/mdx'
 import esbuild from 'esbuild'
 
 let rendererScript = ''
+let mermaidRendererScript = ''
 
 const chConfig: CodeHikeConfig = {
   components: { code: 'Code' },
@@ -12,9 +13,26 @@ const chConfig: CodeHikeConfig = {
   ignoreCode: (codeblock) => codeblock.lang === 'mermaid',
 }
 
-test.beforeAll(async () => {
+const mermaidTheme = {
+  background: '#ffffff',
+  mainBkg: '#f2f2f2',
+  primaryColor: '#f2f2f2',
+  primaryTextColor: '#1e1e1e',
+  primaryBorderColor: '#d0d0d0',
+  secondaryColor: '#ffffff',
+  tertiaryColor: '#f2f2f2',
+  textColor: '#1e1e1e',
+  lineColor: '#8a8a8a',
+  nodeBorder: '#d0d0d0',
+  clusterBkg: '#ffffff',
+  clusterBorder: '#d0d0d0',
+  edgeLabelBackground: '#ffffff',
+  fontFamily: 'sans-serif',
+}
+
+async function buildScript(entryPoint: string): Promise<string> {
   const result = await esbuild.build({
-    entryPoints: ['src/renderer.tsx'],
+    entryPoints: [entryPoint],
     bundle: true,
     format: 'iife',
     platform: 'browser',
@@ -22,7 +40,12 @@ test.beforeAll(async () => {
     write: false,
     treeShaking: true,
   })
-  rendererScript = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+  return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+}
+
+test.beforeAll(async () => {
+  rendererScript = await buildScript('src/renderer.tsx')
+  mermaidRendererScript = await buildScript('src/mermaidRenderer.ts')
 })
 
 async function buildSrcdoc(
@@ -50,6 +73,7 @@ async function buildSrcdoc(
       ),
     ),
   ]
+  const hasMermaid = /\blanguage-mermaid\b/.test(compiledBody)
 
   return `<!DOCTYPE html>
 <html>
@@ -66,22 +90,8 @@ async function buildSrcdoc(
   <script>window.__mdxFrontmatter = ${JSON.stringify(frontmatter).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxFallbacks = ${JSON.stringify(fallbackNames).replace(/<\/script/gi, '<\\/script')}</script>
   <script>window.__mdxImageSources = ${JSON.stringify(imageSources).replace(/<\/script/gi, '<\\/script')}</script>
-  <script>window.__mdxMermaidTheme = ${JSON.stringify({
-    background: '#ffffff',
-    mainBkg: '#f2f2f2',
-    primaryColor: '#f2f2f2',
-    primaryTextColor: '#1e1e1e',
-    primaryBorderColor: '#d0d0d0',
-    secondaryColor: '#ffffff',
-    tertiaryColor: '#f2f2f2',
-    textColor: '#1e1e1e',
-    lineColor: '#8a8a8a',
-    nodeBorder: '#d0d0d0',
-    clusterBkg: '#ffffff',
-    clusterBorder: '#d0d0d0',
-    edgeLabelBackground: '#ffffff',
-    fontFamily: 'sans-serif',
-  }).replace(/<\/script/gi, '<\\/script')}</script>
+  <script>window.__mdxMermaidTheme = ${JSON.stringify(mermaidTheme).replace(/<\/script/gi, '<\\/script')}</script>
+  ${hasMermaid ? `<script>${mermaidRendererScript}</script>` : ''}
   <script>window.__mdxRun = function() { ${compiledBody} }</script>
   <script>${rendererScript}</script>
 </body>
@@ -104,6 +114,30 @@ test.describe('MDX Preview rendering', () => {
     // Content is wrapped in the .markdown-body reading container.
     await expect(iframe.locator('.markdown-body h1')).toHaveText('Hello', { timeout: 30_000 })
     await expect(iframe.locator('strong')).toHaveText('MDX')
+  })
+
+  test('does not load the Mermaid renderer for documents without diagrams', async ({ page }) => {
+    const srcdoc = await buildSrcdoc('# Hello\n\nPlain MDX only.')
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const frame = page.frames().find((f) => f.parentFrame() === page.mainFrame())
+    if (!frame) throw new Error('preview iframe not found')
+    await expect
+      .poll(
+        () =>
+          frame.evaluate(
+            () => typeof (window as Window & { __mdxRenderMermaid?: unknown }).__mdxRenderMermaid,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe('undefined')
   })
 
   test('renders list items', async ({ page }) => {
@@ -141,6 +175,34 @@ flowchart TD
     await expect(iframe.locator('.mdx-error')).toHaveCount(0, { timeout: 30_000 })
     await expect(iframe.locator('.mdx-mermaid svg')).toHaveCount(1, { timeout: 30_000 })
     await expect(iframe.locator('code.language-mermaid')).toHaveCount(0)
+  })
+
+  test('renders multiple Mermaid diagrams in one document', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(`
+\`\`\`mermaid
+flowchart TD
+  A[One] --> B[Two]
+\`\`\`
+
+\`\`\`mermaid
+sequenceDiagram
+  participant User
+  participant Plugin
+  User->>Plugin: second diagram
+\`\`\`
+`)
+
+    await page.goto('about:blank')
+    await page.evaluate((doc) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', 'allow-scripts')
+      iframe.srcdoc = doc
+      document.body.appendChild(iframe)
+    }, srcdoc)
+
+    const iframe = page.frameLocator('iframe')
+    await expect(iframe.locator('.mdx-error')).toHaveCount(0, { timeout: 30_000 })
+    await expect(iframe.locator('.mdx-mermaid svg')).toHaveCount(2, { timeout: 30_000 })
   })
 
   test('shows Mermaid errors without blanking the MDX preview', async ({ page }) => {

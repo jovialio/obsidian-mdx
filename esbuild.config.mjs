@@ -10,30 +10,42 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === 'production'
 
-// Plugin that builds the iframe renderer as a self-contained IIFE at build time.
-// React, ReactDOM, and Code Hike are all bundled into the IIFE — no CDN requests
-// at runtime, preventing a compromised CDN from reading note content.
+async function inlineScript(entryPoint) {
+  const result = await esbuild.build({
+    entryPoints: [entryPoint],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2020',
+    minify: prod,
+    write: false,
+    treeShaking: true,
+  })
+  // Escape </script so the IIFE can be safely embedded inside a <script> tag.
+  return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+}
+
+// Plugin that builds iframe scripts as self-contained IIFEs at build time.
+// Runtime code is bundled locally — no CDN requests, preventing a compromised
+// CDN from reading note content. Mermaid is split into its own IIFE so MDX
+// files without diagrams do not inline the large Mermaid bundle into srcdoc.
 const inlineAssetsPlugin = {
   name: 'inline-assets',
   setup(build) {
-    build.onResolve({ filter: /^renderer-script$/ }, () => ({
-      path: 'renderer-script',
+    build.onResolve({ filter: /^(renderer-script|mermaid-renderer-script)$/ }, (args) => ({
+      path: args.path,
       namespace: 'inline-assets',
     }))
     build.onLoad({ filter: /.*/, namespace: 'inline-assets' }, async (args) => {
       if (args.path === 'renderer-script') {
-        const result = await esbuild.build({
-          entryPoints: ['src/renderer.tsx'],
-          bundle: true,
-          format: 'iife',
-          platform: 'browser',
-          target: 'es2020',
-          minify: prod,
-          write: false,
-          treeShaking: true,
-        })
-        // Escape </script so the IIFE can be safely embedded inside a <script> tag
-        const script = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+        const script = await inlineScript('src/renderer.tsx')
+        return {
+          contents: `export default ${JSON.stringify(script)}`,
+          loader: 'js',
+        }
+      }
+      if (args.path === 'mermaid-renderer-script') {
+        const script = await inlineScript('src/mermaidRenderer.ts')
         return {
           contents: `export default ${JSON.stringify(script)}`,
           loader: 'js',
