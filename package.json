@@ -19,6 +19,7 @@
   "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.44.0",
+    "@types/d3-dispatch": "3.0.6",
     "@types/node": "^16.11.6",
     "@types/react": "^17.0.57",
     "@typescript-eslint/eslint-plugin": "5.29.0",
@@ -36,6 +37,7 @@
   "dependencies": {
     "@mdx-js/mdx": "^2.3.0",
     "codehike": "1.1.0",
+    "mermaid": "^11.17.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   }
