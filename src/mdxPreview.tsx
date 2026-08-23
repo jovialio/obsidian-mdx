@@ -395,7 +395,7 @@ export class mdxPreview extends TextFileView {
     container.empty()
     this.editorEl = null
 
-    const iframe = activeDocument.createElement('iframe')
+    const iframe = container.createEl('iframe')
     iframe.setAttribute('sandbox', 'allow-scripts')
     iframe.srcdoc = srcdoc
     iframe.addClass('mdx-preview-iframe')

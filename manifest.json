@@ -1,7 +1,7 @@
 {
 	"id": "mdx-preview",
 	"name": "MDX Preview",
-	"version": "0.1.17",
+	"version": "0.1.18",
 	"minAppVersion": "1.1.0",
 	"description": "Preview MDX with Code Hike and Mermaid diagrams. Works on mobile and desktop. No internet connection required.",
 	"author": "jovialio",

@@ -10,6 +10,11 @@ function Code({ codeblock }: { codeblock: HighlightedCode }) {
 
 let mermaidRenderId = 0
 
+type MarkdownCodeProps = {
+  children?: React.ReactNode
+  className?: unknown
+}
+
 function MermaidDiagram({ chart }: { chart: string }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const [svg, setSvg] = React.useState('')
@@ -63,12 +68,12 @@ function codeText(children: React.ReactNode): string {
   if (typeof children === 'string') return children
   if (typeof children === 'number') return String(children)
   if (Array.isArray(children)) return children.map(codeText).join('')
-  if (React.isValidElement(children)) return codeText(children.props.children)
+  if (React.isValidElement<MarkdownCodeProps>(children)) return codeText(children.props.children)
   return ''
 }
 
-function isMermaidCodeElement(child: React.ReactNode): child is React.ReactElement {
-  if (!React.isValidElement(child)) return false
+function isMermaidCodeElement(child: React.ReactNode): child is React.ReactElement<MarkdownCodeProps> {
+  if (!React.isValidElement<MarkdownCodeProps>(child)) return false
   const className = child.props.className
   return typeof className === 'string' && /\blanguage-mermaid\b/.test(className)
 }
@@ -346,9 +351,7 @@ try {
 } catch (err) {
   const root = window.document.getElementById('root')
   if (root) {
-    const pre = window.document.createElement('pre')
-    pre.className = 'mdx-error'
-    pre.textContent = 'MDX Error: ' + String(err)
-    root.appendChild(pre)
+    root.className = 'mdx-error'
+    root.textContent = 'MDX Error: ' + String(err)
   }
 }
