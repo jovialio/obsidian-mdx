@@ -395,11 +395,21 @@ type MdxWindow = Window & {
   __mdxMermaidTheme?: Record<string, string>
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isPrintSnapshotRequest(value: unknown): value is { requestId?: unknown } {
+  return (
+    isRecord(value) &&
+    value.__mdxPreview === printMessageMarker &&
+    value.type === 'print-snapshot-request'
+  )
+}
+
 window.addEventListener('message', (event) => {
-  const data = event.data
-  if (!data || data.__mdxPreview !== printMessageMarker || data.type !== 'print-snapshot-request') {
-    return
-  }
+  const data: unknown = event.data
+  if (!isPrintSnapshotRequest(data)) return
   postPrintSnapshot(typeof data.requestId === 'number' ? data.requestId : null)
 })
 

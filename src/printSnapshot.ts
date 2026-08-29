@@ -1,5 +1,4 @@
 export const printMessageMarker = 'mdx-preview'
-export const printReadyTimeoutMs = 2500
 
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => {
@@ -27,7 +26,13 @@ function isAllowedImageDataUrl(value: string, element: Element, attrName: string
 }
 
 function normalizedProtocolValue(value: string): string {
-  return value.replace(/[\u0000-\u001f\u007f\s]+/g, '').toLowerCase()
+  let normalized = ''
+  for (const ch of value) {
+    const code = ch.charCodeAt(0)
+    if (code <= 0x20 || code === 0x7f) continue
+    normalized += ch
+  }
+  return normalized.toLowerCase()
 }
 
 function shouldRemoveUrlAttribute(element: Element, attrName: string, value: string): boolean {
@@ -79,53 +84,12 @@ export function sanitizePrintSnapshotDocument(root: ParentNode): void {
   sanitizeAttributes(root)
 }
 
-function printReadyScript(): string {
-  return `
-(() => {
-  const timeout = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const printWhenReady = () => {
-    const images = Array.from(document.images).filter((img) => !img.complete)
-    const imageReady = Promise.all(images.map((img) => new Promise((resolve) => {
-      img.addEventListener('load', resolve, { once: true })
-      img.addEventListener('error', resolve, { once: true })
-    }))).catch(() => undefined)
-    const fontsReady = document.fonts && document.fonts.ready
-      ? document.fonts.ready.then(() => undefined).catch(() => undefined)
-      : Promise.resolve()
-    Promise.race([Promise.all([imageReady, fontsReady]), timeout(${printReadyTimeoutMs})]).then(() => {
-      setTimeout(() => {
-        window.focus()
-        window.print()
-      }, 50)
-    })
-  }
-  window.addEventListener('afterprint', () => {
-    setTimeout(() => window.close(), 100)
-  })
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', printWhenReady, { once: true })
-  } else {
-    printWhenReady()
-  }
-})()
-`
-}
-
 export function decoratePrintSnapshotHtml(html: string, title: string): string {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
   sanitizePrintSnapshotDocument(doc)
 
-  let titleEl = doc.head.querySelector('title')
-  if (!titleEl) {
-    titleEl = doc.createElement('title')
-    doc.head.appendChild(titleEl)
-  }
-  titleEl.textContent = title
-
-  const script = doc.createElement('script')
-  script.textContent = printReadyScript()
-  doc.body.appendChild(script)
+  doc.title = title
 
   return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML
 }

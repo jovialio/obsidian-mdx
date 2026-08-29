@@ -454,6 +454,7 @@ sequenceDiagram
     expect(html).toContain('<title>Clean title</title>')
     expect(html).toContain('data:image/png;base64,iVBORw0KGgo=')
     expect(html).toContain('Embedded content omitted for print.')
+    expect(html).not.toContain('<script')
     expect(html).not.toContain('window.__bad')
     expect(html).not.toContain('onclick')
     expect(html).not.toContain('onerror')
@@ -524,6 +525,7 @@ window.addEventListener('message', (event) => {
 
     expect(html).toContain('<title>Host sanitized</title>')
     expect(html).toContain('Embedded content omitted for print.')
+    expect(html).not.toContain('<script')
     expect(html).not.toContain('onerror')
     expect(html).not.toContain('javascript:alert')
     expect(html).not.toContain('<iframe')
