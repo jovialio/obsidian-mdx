@@ -6,6 +6,7 @@ import esbuild from 'esbuild'
 
 let rendererScript = ''
 let mermaidRendererScript = ''
+let printSnapshotScript = ''
 
 const chConfig: CodeHikeConfig = {
   components: { code: 'Code' },
@@ -43,9 +44,24 @@ async function buildScript(entryPoint: string): Promise<string> {
   return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
 }
 
+async function buildGlobalScript(entryPoint: string, globalName: string): Promise<string> {
+  const result = await esbuild.build({
+    entryPoints: [entryPoint],
+    bundle: true,
+    format: 'iife',
+    globalName,
+    platform: 'browser',
+    target: 'es2020',
+    write: false,
+    treeShaking: true,
+  })
+  return result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+}
+
 test.beforeAll(async () => {
   rendererScript = await buildScript('src/renderer.tsx')
   mermaidRendererScript = await buildScript('src/mermaidRenderer.ts')
+  printSnapshotScript = await buildGlobalScript('src/printSnapshot.ts', 'printSnapshot')
 })
 
 async function buildSrcdoc(
@@ -343,6 +359,174 @@ sequenceDiagram
         timeout: 30_000,
       })
       .toBe(true)
+  })
+
+  test('returns an inert print snapshot from the sandboxed renderer', async ({ page }) => {
+    const srcdoc = await buildSrcdoc(`
+# Printable
+
+<div dangerouslySetInnerHTML={{__html: '<a href="javascript:alert(1)">bad link</a><img src="javascript:alert(2)" onerror="window.__bad = 1"><script>window.__bad = 2</script><iframe src="https://example.com"></iframe>'}} />
+`)
+
+    await page.goto('about:blank')
+    const html = await page.evaluate(
+      (doc) =>
+        new Promise<string>((resolve, reject) => {
+          const iframe = document.createElement('iframe')
+          const requestId = 42
+          const timeout = window.setTimeout(() => reject(new Error('timed out waiting for snapshot')), 30_000)
+          const onMessage = (event: MessageEvent) => {
+            const data = event.data
+            if (!data || data.__mdxPreview !== 'mdx-preview' || data.type !== 'print-snapshot') {
+              return
+            }
+            if (data.requestId !== requestId) return
+            window.clearTimeout(timeout)
+            window.removeEventListener('message', onMessage)
+            if (data.error) {
+              reject(new Error(String(data.error)))
+              return
+            }
+            resolve(String(data.html))
+          }
+
+          window.addEventListener('message', onMessage)
+          iframe.addEventListener(
+            'load',
+            () => {
+              iframe.contentWindow?.postMessage(
+                { __mdxPreview: 'mdx-preview', type: 'print-snapshot-request', requestId },
+                '*',
+              )
+            },
+            { once: true },
+          )
+          iframe.setAttribute('sandbox', 'allow-scripts')
+          iframe.srcdoc = doc
+          document.body.appendChild(iframe)
+        }),
+      srcdoc,
+    )
+
+    expect(html).toContain('<!DOCTYPE html>')
+    expect(html).toContain('Printable')
+    expect(html).toContain('Embedded content omitted for print.')
+    expect(html).not.toContain('<script')
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('javascript:alert')
+    expect(html).not.toContain('<iframe')
+  })
+
+  test('host print decorator sanitizes hostile snapshot HTML before writing', async ({ page }) => {
+    await page.goto('about:blank')
+    await page.addScriptTag({ content: printSnapshotScript })
+
+    const html = await page.evaluate(() => {
+      const api = (
+        window as unknown as Window & {
+          printSnapshot: { decoratePrintSnapshotHtml: (html: string, title: string) => string }
+        }
+      ).printSnapshot
+
+      return api.decoratePrintSnapshotHtml(
+        `<!DOCTYPE html>
+<html>
+<head><title>Wrong</title><script>window.__bad = 1</script></head>
+<body>
+  <base href="https://example.com/">
+  <meta http-equiv="refresh" content="0; url=https://example.com">
+  <a href="javascript:alert(1)" onclick="window.__bad = 2">bad link</a>
+  <a href="vbscript:msgbox(1)">bad vbscript</a>
+  <img src="javascript:alert(2)" onerror="window.__bad = 3">
+  <img src="data:text/html,<script>alert(1)</script>">
+  <img src="data:image/png;base64,iVBORw0KGgo=">
+  <svg><a xlink:href="data:text/html,<script>alert(1)</script>">bad svg link</a></svg>
+  <form action="javascript:alert(3)"><button formaction="data:text/html,bad">submit</button></form>
+  <iframe src="https://example.com"></iframe>
+  <object data="https://example.com"></object>
+  <embed src="https://example.com">
+</body>
+</html>`,
+        'Clean title',
+      )
+    })
+
+    expect(html).toContain('<title>Clean title</title>')
+    expect(html).toContain('data:image/png;base64,iVBORw0KGgo=')
+    expect(html).toContain('Embedded content omitted for print.')
+    expect(html).not.toContain('window.__bad')
+    expect(html).not.toContain('onclick')
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('javascript:alert')
+    expect(html).not.toContain('vbscript:msgbox')
+    expect(html).not.toContain('data:text/html')
+    expect(html).not.toContain('<base')
+    expect(html).not.toContain('http-equiv')
+    expect(html).not.toContain('formaction')
+    expect(html).not.toContain('<iframe')
+    expect(html).not.toContain('<object')
+    expect(html).not.toContain('<embed')
+  })
+
+  test('host sanitizes a malicious renderer snapshot response', async ({ page }) => {
+    await page.goto('about:blank')
+    await page.addScriptTag({ content: printSnapshotScript })
+
+    const html = await page.evaluate(
+      (maliciousHtml) =>
+        new Promise<string>((resolve, reject) => {
+          const api = (
+            window as unknown as Window & {
+              printSnapshot: { decoratePrintSnapshotHtml: (html: string, title: string) => string }
+            }
+          ).printSnapshot
+          const iframe = document.createElement('iframe')
+          const requestId = 7
+          const timeout = window.setTimeout(() => reject(new Error('timed out waiting for response')), 30_000)
+          const onMessage = (event: MessageEvent) => {
+            const data = event.data
+            if (!data || data.__mdxPreview !== 'mdx-preview' || data.type !== 'print-snapshot') {
+              return
+            }
+            if (data.requestId !== requestId) return
+            window.clearTimeout(timeout)
+            window.removeEventListener('message', onMessage)
+            resolve(api.decoratePrintSnapshotHtml(String(data.html), 'Host sanitized'))
+          }
+
+          window.addEventListener('message', onMessage)
+          iframe.addEventListener(
+            'load',
+            () => {
+              iframe.contentWindow?.postMessage(
+                { __mdxPreview: 'mdx-preview', type: 'print-snapshot-request', requestId },
+                '*',
+              )
+            },
+            { once: true },
+          )
+          iframe.setAttribute('sandbox', 'allow-scripts')
+          iframe.srcdoc = `<script>
+window.addEventListener('message', (event) => {
+  if (event.data?.type !== 'print-snapshot-request') return
+  window.parent.postMessage({
+    __mdxPreview: 'mdx-preview',
+    type: 'print-snapshot',
+    requestId: event.data.requestId,
+    html: ${JSON.stringify(maliciousHtml)}
+  }, '*')
+})
+<\/script>`
+          document.body.appendChild(iframe)
+        }),
+      '<!DOCTYPE html><html><body><img src=x onerror="window.__escaped = true"><a href="javascript:alert(1)">bad</a><iframe src="https://example.com"></iframe></body></html>',
+    )
+
+    expect(html).toContain('<title>Host sanitized</title>')
+    expect(html).toContain('Embedded content omitted for print.')
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('javascript:alert')
+    expect(html).not.toContain('<iframe')
   })
 
   test('shows error message when __mdxRun is not defined', async ({ page }) => {

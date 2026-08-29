@@ -3,12 +3,14 @@ import * as runtime from 'react/jsx-runtime'
 import { createRoot } from 'react-dom/client'
 import { Pre } from 'codehike/code'
 import type { HighlightedCode } from 'codehike/code'
+import { printMessageMarker, sanitizePrintSnapshotDocument } from './printSnapshot'
 
 function Code({ codeblock }: { codeblock: HighlightedCode }) {
   return React.createElement(Pre, { code: codeblock })
 }
 
 let mermaidRenderId = 0
+const pendingPrintSnapshots = new Set<number | null>()
 
 type MarkdownCodeProps = {
   children?: React.ReactNode
@@ -127,6 +129,89 @@ function Image(props: React.ImgHTMLAttributes<HTMLImageElement>) {
     typeof props.src === 'string' ? mappedImageSource(props.src, imageSources) ?? props.src : props.src
 
   return React.createElement('img', { ...props, src })
+}
+
+function waitForFrames(count: number): Promise<void> {
+  return new Promise((resolve) => {
+    const next = (remaining: number) => {
+      if (remaining <= 0) {
+        resolve()
+        return
+      }
+      window.requestAnimationFrame(() => next(remaining - 1))
+    }
+    next(count)
+  })
+}
+
+function waitForMermaid(timeoutMs = 2000): Promise<void> {
+  const started = Date.now()
+  return new Promise((resolve) => {
+    const check = () => {
+      const busy = window.document.querySelector('.mdx-mermaid[aria-busy="true"]')
+      if (!busy || Date.now() - started > timeoutMs) {
+        resolve()
+        return
+      }
+      window.requestAnimationFrame(check)
+    }
+    check()
+  })
+}
+
+function waitForImages(timeoutMs = 2000): Promise<void> {
+  const pending = Array.from(window.document.images).filter((img) => !img.complete)
+  if (pending.length === 0) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    let remaining = pending.length
+    let timeout: number
+    const done = () => {
+      remaining--
+      if (remaining <= 0) {
+        window.clearTimeout(timeout)
+        resolve()
+      }
+    }
+    timeout = window.setTimeout(resolve, timeoutMs)
+    pending.forEach((img) => {
+      img.addEventListener('load', done, { once: true })
+      img.addEventListener('error', done, { once: true })
+    })
+  })
+}
+
+async function buildPrintSnapshot(): Promise<string> {
+  await waitForFrames(2)
+  await waitForMermaid()
+  await waitForImages()
+
+  const clone = window.document.documentElement.cloneNode(true) as HTMLElement
+  sanitizePrintSnapshotDocument(clone)
+
+  return '<!DOCTYPE html>\n' + clone.outerHTML
+}
+
+function postPrintSnapshot(requestId: number | null): void {
+  if (pendingPrintSnapshots.has(requestId)) return
+  pendingPrintSnapshots.add(requestId)
+
+  void buildPrintSnapshot()
+    .then((html) => {
+      window.parent.postMessage(
+        { __mdxPreview: printMessageMarker, type: 'print-snapshot', requestId, html },
+        '*',
+      )
+    })
+    .catch((err: unknown) => {
+      window.parent.postMessage(
+        { __mdxPreview: printMessageMarker, type: 'print-snapshot', requestId, error: String(err) },
+        '*',
+      )
+    })
+    .finally(() => {
+      pendingPrintSnapshots.delete(requestId)
+    })
 }
 
 type ScrollyStep = {
@@ -309,6 +394,14 @@ type MdxWindow = Window & {
   __mdxImageSources?: Record<string, string>
   __mdxMermaidTheme?: Record<string, string>
 }
+
+window.addEventListener('message', (event) => {
+  const data = event.data
+  if (!data || data.__mdxPreview !== printMessageMarker || data.type !== 'print-snapshot-request') {
+    return
+  }
+  postPrintSnapshot(typeof data.requestId === 'number' ? data.requestId : null)
+})
 
 try {
   const win = window as MdxWindow
