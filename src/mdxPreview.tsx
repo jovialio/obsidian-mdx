@@ -153,6 +153,9 @@ export class mdxPreview extends TextFileView {
     this._renderTimer = null
   }
 
+  // Each call opens a fresh blob URL and installs its own `load` listener + fallback
+  // timer, so a later call (snapshot) safely supersedes an earlier one (status page)
+  // without the two racing to resolve the same navigation.
   private loadPrintWindowHtml(printWindow: Window, html: string): Promise<void> {
     const url = window.URL.createObjectURL(new Blob([html], { type: 'text/html' }))
     return new Promise<void>((resolve) => {
@@ -301,6 +304,9 @@ export class mdxPreview extends TextFileView {
       return
     }
 
+    // Intentional split: window/event/geometry calls target `activeWindow` (so printing
+    // keeps working when the view lives in a popout window), while timers and blob URLs
+    // use `window`. Keep them separate — unifying these would break popout-window printing.
     const printWindow = activeWindow.open('', '_blank')
     if (!printWindow) {
       new Notice('MDX Preview: allow popups to print or save as PDF.', 5000)

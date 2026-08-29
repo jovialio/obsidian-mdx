@@ -70,7 +70,10 @@ function removeNavigationElements(root: ParentNode): void {
 
 function replaceEmbeddedElements(root: ParentNode): void {
   root.querySelectorAll('iframe, object, embed').forEach((el) => {
-    el.replaceWith('Embedded content omitted for print.')
+    const placeholder = el.ownerDocument.createElement('div')
+    placeholder.className = 'mdx-print-placeholder'
+    placeholder.textContent = 'Embedded content omitted for print.'
+    el.replaceWith(placeholder)
   })
 }
 
