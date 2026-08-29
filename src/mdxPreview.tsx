@@ -1,4 +1,4 @@
-import { TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
+import { Notice, TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import type { CodeHikeConfig } from 'codehike/mdx'
@@ -15,6 +15,7 @@ import {
   imageSourceSuffix,
   isExternalImageSource,
 } from './imageSources'
+import { decoratePrintSnapshotHtml, escapeHtml, printMessageMarker } from './printSnapshot'
 
 export const MDX_PREVIEW = 'mdx-preview'
 
@@ -33,14 +34,25 @@ const chConfig: CodeHikeConfig = {
   ignoreCode: (codeblock) => codeblock.lang === 'mermaid',
 }
 
+type PendingPrintSnapshot = {
+  requestId: number
+  printWindow: Window
+  resendTimer: number
+  timeoutTimer: number
+}
+
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
   private editorEl: HTMLTextAreaElement | null = null
   private toggleAction: HTMLElement | null = null
+  private printAction: HTMLElement | null = null
   private _mode: 'preview' | 'source' = 'preview'
   private _content = ''
   private _renderTimer: number | null = null
   private _renderGeneration = 0
+  private _printRequestId = 0
+  private _pendingPrintSnapshot: PendingPrintSnapshot | null = null
+  private _messageBound = false
   // Cache encoded data URLs by vault path so debounced re-renders don't re-read
   // and re-encode unchanged images; keyed with mtime so edits are picked up.
   private _dataUrlCache = new Map<string, { mtime: number; url: string }>()
@@ -55,6 +67,15 @@ export class mdxPreview extends TextFileView {
     if (!this.toggleAction) {
       this.toggleAction = this.addAction('pencil', 'Edit source', () => this.toggleMode())
       this.updateToggleIcon()
+    }
+    if (!this.printAction) {
+      this.printAction = this.addAction('printer', 'Print / Save as PDF', () => this.printCurrentMdx())
+    }
+    if (!this._messageBound) {
+      this._messageBound = true
+      this.registerDomEvent(activeWindow, 'message', (event: MessageEvent) => {
+        this.handleRendererMessage(event)
+      })
     }
   }
 
@@ -100,6 +121,123 @@ export class mdxPreview extends TextFileView {
     // In preview show a pencil (click to edit); in source show a book (click to read).
     setIcon(this.toggleAction, inPreview ? 'pencil' : 'book-open')
     this.toggleAction.setAttribute('aria-label', inPreview ? 'Edit source' : 'Preview')
+  }
+
+  private cancelScheduledRender(): void {
+    if (!this._renderTimer) return
+    activeWindow.clearTimeout(this._renderTimer)
+    this._renderTimer = null
+  }
+
+  private writePrintStatusPage(printWindow: Window, title: string, message: string): void {
+    printWindow.document.open()
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { margin: 0; padding: 24px; font-family: sans-serif; color: #1e1e1e; background: #ffffff; }
+  </style>
+</head>
+<body>${escapeHtml(message)}</body>
+</html>`)
+    printWindow.document.close()
+  }
+
+  private requestPrintSnapshot(printWindow: Window): void {
+    const iframeWindow = this.iframe?.contentWindow
+    if (!iframeWindow) throw new Error('Preview iframe is not ready')
+
+    if (this._pendingPrintSnapshot) {
+      activeWindow.clearInterval(this._pendingPrintSnapshot.resendTimer)
+      activeWindow.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
+      this.writePrintStatusPage(
+        this._pendingPrintSnapshot.printWindow,
+        'MDX Preview',
+        'A newer print request replaced this one.',
+      )
+      this._pendingPrintSnapshot = null
+    }
+
+    const requestId = ++this._printRequestId
+    const message = { __mdxPreview: printMessageMarker, type: 'print-snapshot-request', requestId }
+    const send = () => iframeWindow.postMessage(message, '*')
+    const resendTimer = activeWindow.setInterval(send, 100)
+    const timeoutTimer = activeWindow.setTimeout(() => {
+      activeWindow.clearInterval(resendTimer)
+      if (this._pendingPrintSnapshot?.requestId === requestId) {
+        this._pendingPrintSnapshot = null
+      }
+      this.writePrintStatusPage(printWindow, 'MDX Preview', 'The MDX preview was not ready to print.')
+      new Notice('MDX Preview: preview was not ready to print.', 5000)
+    }, 6000)
+
+    this._pendingPrintSnapshot = { requestId, printWindow, resendTimer, timeoutTimer }
+    send()
+  }
+
+  private handleRendererMessage(event: MessageEvent): void {
+    if (!this.iframe || event.source !== this.iframe.contentWindow) return
+
+    const data = event.data
+    if (!data || data.__mdxPreview !== printMessageMarker || data.type !== 'print-snapshot') return
+
+    const pending = this._pendingPrintSnapshot
+    if (!pending || data.requestId !== pending.requestId) return
+
+    activeWindow.clearInterval(pending.resendTimer)
+    activeWindow.clearTimeout(pending.timeoutTimer)
+    this._pendingPrintSnapshot = null
+
+    if (data.error) {
+      this.writePrintStatusPage(pending.printWindow, 'MDX Preview', `Unable to prepare print view: ${data.error}`)
+      new Notice('MDX Preview: unable to prepare print view.', 5000)
+      return
+    }
+
+    pending.printWindow.document.open()
+    pending.printWindow.document.write(
+      decoratePrintSnapshotHtml(String(data.html), this.file?.basename ?? 'MDX Preview'),
+    )
+    pending.printWindow.document.close()
+  }
+
+  private async printCurrentMdx(): Promise<void> {
+    if (!consentGiven) {
+      this.showConsentBanner()
+      new Notice('Enable MDX Preview before printing.', 5000)
+      return
+    }
+
+    if (this._pendingPrintSnapshot) {
+      this._pendingPrintSnapshot.printWindow.focus()
+      new Notice('MDX Preview: print view is already being prepared.', 3000)
+      return
+    }
+
+    const printWindow = activeWindow.open('', '_blank')
+    if (!printWindow) {
+      new Notice('MDX Preview: allow popups to print or save as PDF.', 5000)
+      return
+    }
+    printWindow.opener = null
+    this.writePrintStatusPage(printWindow, this.file?.basename ?? 'MDX Preview', 'Preparing print view...')
+
+    if (this._mode === 'source') {
+      this._mode = 'preview'
+      this.updateToggleIcon()
+    }
+
+    try {
+      this.cancelScheduledRender()
+      const rendered = await this.renderPreview()
+      if (!rendered) throw new Error('Preview iframe is not ready')
+      this.requestPrintSnapshot(printWindow)
+    } catch (err) {
+      this.writePrintStatusPage(printWindow, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
+      new Notice('MDX Preview: unable to prepare print view.', 5000)
+    }
   }
 
   private renderSource(): void {
@@ -221,10 +359,10 @@ export class mdxPreview extends TextFileView {
     return url
   }
 
-  private async renderPreview() {
+  private async renderPreview(): Promise<boolean> {
     if (!consentGiven) {
       this.showConsentBanner()
-      return
+      return false
     }
 
     // Increment generation so any in-flight compile from a previous call
@@ -265,7 +403,7 @@ export class mdxPreview extends TextFileView {
 
     // A newer render started, or the user switched to source mode, while we
     // were compiling — discard this result so it can't draw over the editor.
-    if (generation !== this._renderGeneration || this._mode !== 'preview') return
+    if (generation !== this._renderGeneration || this._mode !== 'preview') return false
 
     // Components the MDX references but that we can't provide (custom components
     // from the author's own app) would throw "Expected component X to be
@@ -370,9 +508,30 @@ export class mdxPreview extends TextFileView {
     .mdx-scrollycoding-code { position: sticky; top: 16px; min-width: 0; }
     .mdx-scrollycoding-code pre { margin: 0; max-height: calc(100vh - 48px); }
     .mdx-scrollycoding-static { border: 1px solid ${border}; border-radius: 6px; padding: 12px; }
+    .mdx-print-placeholder { margin: 0 0 16px; padding: 12px; border: 1px solid ${border}; border-radius: 6px; color: ${muted}; background: ${codeBg}; }
     @media (max-width: 700px) {
       .mdx-scrollycoding-grid { grid-template-columns: 1fr; }
       .mdx-scrollycoding-step { min-height: auto; }
+      .mdx-scrollycoding-code { position: static; }
+      .mdx-scrollycoding-code pre { max-height: none; }
+    }
+    @media print {
+      @page { margin: 0.75in; }
+      html, body { background: #ffffff !important; color: #111111 !important; }
+      body { max-width: none; padding: 0; font-size: 11pt; line-height: 1.5; }
+      a { color: #111111 !important; text-decoration: underline; }
+      .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { break-after: avoid; page-break-after: avoid; }
+      .markdown-body h1 { font-size: 22pt; }
+      .markdown-body h2 { font-size: 17pt; }
+      .markdown-body h3 { font-size: 14pt; }
+      .markdown-body img, .markdown-body pre, .markdown-body blockquote, .markdown-body table, .mdx-frontmatter, .mdx-fallback, .mdx-mermaid, .mdx-print-placeholder { break-inside: avoid; page-break-inside: avoid; }
+      .markdown-body img { max-width: 100% !important; height: auto !important; }
+      .markdown-body table { display: table; width: 100%; max-width: 100%; overflow: visible; }
+      .markdown-body tr { break-inside: avoid; page-break-inside: avoid; }
+      .markdown-body pre, .markdown-body pre *, .markdown-body :not(pre) > code { background: #f6f8fa !important; color: #111111 !important; }
+      .markdown-body pre { white-space: pre-wrap; border: 1px solid #d8dee4; }
+      .mdx-scrollycoding-grid { display: block; }
+      .mdx-scrollycoding-step { min-height: auto; opacity: 1; background: transparent; break-inside: avoid; page-break-inside: avoid; }
       .mdx-scrollycoding-code { position: static; }
       .mdx-scrollycoding-code pre { max-height: none; }
     }
@@ -401,10 +560,16 @@ export class mdxPreview extends TextFileView {
     iframe.addClass('mdx-preview-iframe')
     this.iframe = iframe
     container.appendChild(iframe)
+    return true
   }
 
   async onClose() {
     if (this._renderTimer) window.clearTimeout(this._renderTimer)
+    if (this._pendingPrintSnapshot) {
+      activeWindow.clearInterval(this._pendingPrintSnapshot.resendTimer)
+      activeWindow.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
+      this._pendingPrintSnapshot = null
+    }
     if (this.iframe) {
       this.iframe.remove()
       this.iframe = null
