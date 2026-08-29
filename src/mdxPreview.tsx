@@ -41,6 +41,30 @@ type PendingPrintSnapshot = {
   timeoutTimer: number
 }
 
+type PrintSnapshotResponse = {
+  __mdxPreview: typeof printMessageMarker
+  type: 'print-snapshot'
+  requestId: number
+  html?: unknown
+  error?: unknown
+}
+
+const printReadyTimeoutMs = 2500
+const printWindowLoadTimeoutMs = 1500
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isPrintSnapshotResponse(value: unknown): value is PrintSnapshotResponse {
+  return (
+    isRecord(value) &&
+    value.__mdxPreview === printMessageMarker &&
+    value.type === 'print-snapshot' &&
+    typeof value.requestId === 'number'
+  )
+}
+
 export class mdxPreview extends TextFileView {
   private iframe: HTMLIFrameElement | null = null
   private editorEl: HTMLTextAreaElement | null = null
@@ -125,13 +149,32 @@ export class mdxPreview extends TextFileView {
 
   private cancelScheduledRender(): void {
     if (!this._renderTimer) return
-    activeWindow.clearTimeout(this._renderTimer)
+    window.clearTimeout(this._renderTimer)
     this._renderTimer = null
   }
 
-  private writePrintStatusPage(printWindow: Window, title: string, message: string): void {
-    printWindow.document.open()
-    printWindow.document.write(`<!DOCTYPE html>
+  private loadPrintWindowHtml(printWindow: Window, html: string): Promise<void> {
+    const url = window.URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+    return new Promise<void>((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        printWindow.removeEventListener('load', finish)
+        window.clearTimeout(timeoutTimer)
+        window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+        resolve()
+      }
+      const timeoutTimer = window.setTimeout(finish, printWindowLoadTimeoutMs)
+      printWindow.addEventListener('load', finish, { once: true })
+      printWindow.location.href = url
+    })
+  }
+
+  private showPrintStatusPage(printWindow: Window, title: string, message: string): void {
+    void this.loadPrintWindowHtml(
+      printWindow,
+      `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -141,8 +184,47 @@ export class mdxPreview extends TextFileView {
   </style>
 </head>
 <body>${escapeHtml(message)}</body>
-</html>`)
-    printWindow.document.close()
+</html>`,
+    )
+  }
+
+  private waitForPrintWindow(printWindow: Window): Promise<void> {
+    const doc = printWindow.document
+    const imageReady = Promise.all(
+      Array.from(doc.images).map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) {
+              resolve()
+              return
+            }
+            img.addEventListener('load', () => resolve(), { once: true })
+            img.addEventListener('error', () => resolve(), { once: true })
+          }),
+      ),
+    )
+      .then(() => undefined)
+      .catch(() => undefined)
+    const fonts = (doc as Document & { fonts?: { ready?: Promise<unknown> } }).fonts
+    const fontsReady = fonts?.ready
+      ? fonts.ready.then(() => undefined).catch(() => undefined)
+      : Promise.resolve()
+
+    return Promise.race([
+      Promise.all([imageReady, fontsReady]).then(() => undefined),
+      new Promise<void>((resolve) => window.setTimeout(resolve, printReadyTimeoutMs)),
+    ])
+  }
+
+  private async printPreparedWindow(printWindow: Window): Promise<void> {
+    await this.waitForPrintWindow(printWindow)
+    if (printWindow.closed) return
+
+    printWindow.addEventListener('afterprint', () => window.setTimeout(() => printWindow.close(), 100), {
+      once: true,
+    })
+    printWindow.focus()
+    printWindow.print()
   }
 
   private requestPrintSnapshot(printWindow: Window): void {
@@ -150,9 +232,9 @@ export class mdxPreview extends TextFileView {
     if (!iframeWindow) throw new Error('Preview iframe is not ready')
 
     if (this._pendingPrintSnapshot) {
-      activeWindow.clearInterval(this._pendingPrintSnapshot.resendTimer)
-      activeWindow.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
-      this.writePrintStatusPage(
+      window.clearInterval(this._pendingPrintSnapshot.resendTimer)
+      window.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
+      this.showPrintStatusPage(
         this._pendingPrintSnapshot.printWindow,
         'MDX Preview',
         'A newer print request replaced this one.',
@@ -163,13 +245,13 @@ export class mdxPreview extends TextFileView {
     const requestId = ++this._printRequestId
     const message = { __mdxPreview: printMessageMarker, type: 'print-snapshot-request', requestId }
     const send = () => iframeWindow.postMessage(message, '*')
-    const resendTimer = activeWindow.setInterval(send, 100)
-    const timeoutTimer = activeWindow.setTimeout(() => {
-      activeWindow.clearInterval(resendTimer)
+    const resendTimer = window.setInterval(send, 100)
+    const timeoutTimer = window.setTimeout(() => {
+      window.clearInterval(resendTimer)
       if (this._pendingPrintSnapshot?.requestId === requestId) {
         this._pendingPrintSnapshot = null
       }
-      this.writePrintStatusPage(printWindow, 'MDX Preview', 'The MDX preview was not ready to print.')
+      this.showPrintStatusPage(printWindow, 'MDX Preview', 'The MDX preview was not ready to print.')
       new Notice('MDX Preview: preview was not ready to print.', 5000)
     }, 6000)
 
@@ -180,27 +262,30 @@ export class mdxPreview extends TextFileView {
   private handleRendererMessage(event: MessageEvent): void {
     if (!this.iframe || event.source !== this.iframe.contentWindow) return
 
-    const data = event.data
-    if (!data || data.__mdxPreview !== printMessageMarker || data.type !== 'print-snapshot') return
+    const data: unknown = event.data
+    if (!isPrintSnapshotResponse(data)) return
 
     const pending = this._pendingPrintSnapshot
     if (!pending || data.requestId !== pending.requestId) return
 
-    activeWindow.clearInterval(pending.resendTimer)
-    activeWindow.clearTimeout(pending.timeoutTimer)
+    window.clearInterval(pending.resendTimer)
+    window.clearTimeout(pending.timeoutTimer)
     this._pendingPrintSnapshot = null
 
     if (data.error) {
-      this.writePrintStatusPage(pending.printWindow, 'MDX Preview', `Unable to prepare print view: ${data.error}`)
+      this.showPrintStatusPage(pending.printWindow, 'MDX Preview', `Unable to prepare print view: ${String(data.error)}`)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
       return
     }
 
-    pending.printWindow.document.open()
-    pending.printWindow.document.write(
+    void this.loadPrintWindowHtml(
+      pending.printWindow,
       decoratePrintSnapshotHtml(String(data.html), this.file?.basename ?? 'MDX Preview'),
     )
-    pending.printWindow.document.close()
+      .then(() => this.printPreparedWindow(pending.printWindow))
+      .catch(() => {
+        new Notice('MDX Preview: unable to open print dialog.', 5000)
+      })
   }
 
   private async printCurrentMdx(): Promise<void> {
@@ -222,7 +307,7 @@ export class mdxPreview extends TextFileView {
       return
     }
     printWindow.opener = null
-    this.writePrintStatusPage(printWindow, this.file?.basename ?? 'MDX Preview', 'Preparing print view...')
+    this.showPrintStatusPage(printWindow, this.file?.basename ?? 'MDX Preview', 'Preparing print view...')
 
     if (this._mode === 'source') {
       this._mode = 'preview'
@@ -235,7 +320,7 @@ export class mdxPreview extends TextFileView {
       if (!rendered) throw new Error('Preview iframe is not ready')
       this.requestPrintSnapshot(printWindow)
     } catch (err) {
-      this.writePrintStatusPage(printWindow, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
+      this.showPrintStatusPage(printWindow, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
     }
   }
@@ -566,8 +651,8 @@ export class mdxPreview extends TextFileView {
   async onClose() {
     if (this._renderTimer) window.clearTimeout(this._renderTimer)
     if (this._pendingPrintSnapshot) {
-      activeWindow.clearInterval(this._pendingPrintSnapshot.resendTimer)
-      activeWindow.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
+      window.clearInterval(this._pendingPrintSnapshot.resendTimer)
+      window.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
       this._pendingPrintSnapshot = null
     }
     if (this.iframe) {
