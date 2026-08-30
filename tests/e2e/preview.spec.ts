@@ -547,6 +547,7 @@ window.addEventListener('message', (event) => {
 
     expect(mdxPreviewSource).toContain("createEl('iframe'")
     expect(mdxPreviewSource).toContain("allow-same-origin allow-modals")
+    expect(mdxPreviewSource).toMatch(/if \(this\._printFrame === printFrame\) this\.removePrintFrame\(\)/)
     expect(mdxPreviewSource).not.toContain('allow-scripts allow-same-origin')
   })
 

@@ -244,9 +244,14 @@ export class mdxPreview extends TextFileView {
     const frameWindow = printFrame.contentWindow
     if (!frameWindow) throw new Error('Print frame is not ready')
 
-    frameWindow.addEventListener('afterprint', () => window.setTimeout(() => this.removePrintFrame(), 100), {
-      once: true,
-    })
+    frameWindow.addEventListener(
+      'afterprint',
+      () =>
+        window.setTimeout(() => {
+          if (this._printFrame === printFrame) this.removePrintFrame()
+        }, 100),
+      { once: true },
+    )
     frameWindow.print()
     window.setTimeout(() => {
       if (this._printFrame === printFrame) this.removePrintFrame()
