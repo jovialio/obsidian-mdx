@@ -14,6 +14,17 @@
   display: block;
 }
 
+.mdx-print-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 816px;
+  height: 1056px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Applied to the view content while editing so the absolutely-positioned
    editor below has a positioning context to fill. */
 .mdx-editing {

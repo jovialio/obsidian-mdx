@@ -36,7 +36,7 @@ const chConfig: CodeHikeConfig = {
 
 type PendingPrintSnapshot = {
   requestId: number
-  printWindow: Window
+  printFrame: HTMLIFrameElement
   resendTimer: number
   timeoutTimer: number
 }
@@ -50,7 +50,7 @@ type PrintSnapshotResponse = {
 }
 
 const printReadyTimeoutMs = 2500
-const printWindowLoadTimeoutMs = 1500
+const printFrameLoadTimeoutMs = 1500
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -76,6 +76,7 @@ export class mdxPreview extends TextFileView {
   private _renderGeneration = 0
   private _printRequestId = 0
   private _pendingPrintSnapshot: PendingPrintSnapshot | null = null
+  private _printFrame: HTMLIFrameElement | null = null
   private _messageBound = false
   // Cache encoded data URLs by vault path so debounced re-renders don't re-read
   // and re-encode unchanged images; keyed with mtime so edits are picked up.
@@ -153,30 +154,46 @@ export class mdxPreview extends TextFileView {
     this._renderTimer = null
   }
 
-  // Each call opens a fresh blob URL and installs its own `load` listener + fallback
-  // timer, so a later call (snapshot) safely supersedes an earlier one (status page)
-  // without the two racing to resolve the same navigation.
-  private loadPrintWindowHtml(printWindow: Window, html: string): Promise<void> {
+  private removePrintFrame(): void {
+    if (!this._printFrame) return
+    this._printFrame.remove()
+    this._printFrame = null
+  }
+
+  private createPrintFrame(): HTMLIFrameElement {
+    this.removePrintFrame()
+    const printFrame = this.containerEl.createEl('iframe', { cls: 'mdx-print-frame' })
+    printFrame.setAttribute('title', 'MDX print view')
+    // Static sanitized HTML only: allow-same-origin lets the host wait for
+    // assets/fonts and call print(), while omitting allow-scripts keeps it inert.
+    printFrame.setAttribute('sandbox', 'allow-same-origin allow-modals')
+    this._printFrame = printFrame
+    return printFrame
+  }
+
+  // Each call loads a fresh blob URL and installs its own `load` listener +
+  // fallback timer, so a later call safely supersedes an earlier navigation.
+  private loadPrintFrameHtml(printFrame: HTMLIFrameElement, html: string): Promise<void> {
     const url = window.URL.createObjectURL(new Blob([html], { type: 'text/html' }))
     return new Promise<void>((resolve) => {
       let settled = false
       const finish = () => {
         if (settled) return
         settled = true
-        printWindow.removeEventListener('load', finish)
+        printFrame.removeEventListener('load', finish)
         window.clearTimeout(timeoutTimer)
         window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
         resolve()
       }
-      const timeoutTimer = window.setTimeout(finish, printWindowLoadTimeoutMs)
-      printWindow.addEventListener('load', finish, { once: true })
-      printWindow.location.href = url
+      const timeoutTimer = window.setTimeout(finish, printFrameLoadTimeoutMs)
+      printFrame.addEventListener('load', finish, { once: true })
+      printFrame.src = url
     })
   }
 
-  private showPrintStatusPage(printWindow: Window, title: string, message: string): void {
-    void this.loadPrintWindowHtml(
-      printWindow,
+  private showPrintStatusPage(printFrame: HTMLIFrameElement, title: string, message: string): void {
+    void this.loadPrintFrameHtml(
+      printFrame,
       `<!DOCTYPE html>
 <html>
 <head>
@@ -191,8 +208,10 @@ export class mdxPreview extends TextFileView {
     )
   }
 
-  private waitForPrintWindow(printWindow: Window): Promise<void> {
-    const doc = printWindow.document
+  private waitForPrintFrame(printFrame: HTMLIFrameElement): Promise<void> {
+    const doc = printFrame.contentDocument
+    if (!doc) return Promise.resolve()
+
     const imageReady = Promise.all(
       Array.from(doc.images).map(
         (img) =>
@@ -219,18 +238,22 @@ export class mdxPreview extends TextFileView {
     ])
   }
 
-  private async printPreparedWindow(printWindow: Window): Promise<void> {
-    await this.waitForPrintWindow(printWindow)
-    if (printWindow.closed) return
+  private async printPreparedFrame(printFrame: HTMLIFrameElement): Promise<void> {
+    await this.waitForPrintFrame(printFrame)
 
-    printWindow.addEventListener('afterprint', () => window.setTimeout(() => printWindow.close(), 100), {
+    const frameWindow = printFrame.contentWindow
+    if (!frameWindow) throw new Error('Print frame is not ready')
+
+    frameWindow.addEventListener('afterprint', () => window.setTimeout(() => this.removePrintFrame(), 100), {
       once: true,
     })
-    printWindow.focus()
-    printWindow.print()
+    frameWindow.print()
+    window.setTimeout(() => {
+      if (this._printFrame === printFrame) this.removePrintFrame()
+    }, 30_000)
   }
 
-  private requestPrintSnapshot(printWindow: Window): void {
+  private requestPrintSnapshot(printFrame: HTMLIFrameElement): void {
     const iframeWindow = this.iframe?.contentWindow
     if (!iframeWindow) throw new Error('Preview iframe is not ready')
 
@@ -238,7 +261,7 @@ export class mdxPreview extends TextFileView {
       window.clearInterval(this._pendingPrintSnapshot.resendTimer)
       window.clearTimeout(this._pendingPrintSnapshot.timeoutTimer)
       this.showPrintStatusPage(
-        this._pendingPrintSnapshot.printWindow,
+        this._pendingPrintSnapshot.printFrame,
         'MDX Preview',
         'A newer print request replaced this one.',
       )
@@ -254,11 +277,11 @@ export class mdxPreview extends TextFileView {
       if (this._pendingPrintSnapshot?.requestId === requestId) {
         this._pendingPrintSnapshot = null
       }
-      this.showPrintStatusPage(printWindow, 'MDX Preview', 'The MDX preview was not ready to print.')
+      this.showPrintStatusPage(printFrame, 'MDX Preview', 'The MDX preview was not ready to print.')
       new Notice('MDX Preview: preview was not ready to print.', 5000)
     }, 6000)
 
-    this._pendingPrintSnapshot = { requestId, printWindow, resendTimer, timeoutTimer }
+    this._pendingPrintSnapshot = { requestId, printFrame, resendTimer, timeoutTimer }
     send()
   }
 
@@ -276,16 +299,16 @@ export class mdxPreview extends TextFileView {
     this._pendingPrintSnapshot = null
 
     if (data.error) {
-      this.showPrintStatusPage(pending.printWindow, 'MDX Preview', `Unable to prepare print view: ${String(data.error)}`)
+      this.showPrintStatusPage(pending.printFrame, 'MDX Preview', `Unable to prepare print view: ${String(data.error)}`)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
       return
     }
 
-    void this.loadPrintWindowHtml(
-      pending.printWindow,
+    void this.loadPrintFrameHtml(
+      pending.printFrame,
       decoratePrintSnapshotHtml(String(data.html), this.file?.basename ?? 'MDX Preview'),
     )
-      .then(() => this.printPreparedWindow(pending.printWindow))
+      .then(() => this.printPreparedFrame(pending.printFrame))
       .catch(() => {
         new Notice('MDX Preview: unable to open print dialog.', 5000)
       })
@@ -299,21 +322,12 @@ export class mdxPreview extends TextFileView {
     }
 
     if (this._pendingPrintSnapshot) {
-      this._pendingPrintSnapshot.printWindow.focus()
       new Notice('MDX Preview: print view is already being prepared.', 3000)
       return
     }
 
-    // Intentional split: window/event/geometry calls target `activeWindow` (so printing
-    // keeps working when the view lives in a popout window), while timers and blob URLs
-    // use `window`. Keep them separate — unifying these would break popout-window printing.
-    const printWindow = activeWindow.open('', '_blank')
-    if (!printWindow) {
-      new Notice('MDX Preview: allow popups to print or save as PDF.', 5000)
-      return
-    }
-    printWindow.opener = null
-    this.showPrintStatusPage(printWindow, this.file?.basename ?? 'MDX Preview', 'Preparing print view...')
+    const printFrame = this.createPrintFrame()
+    this.showPrintStatusPage(printFrame, this.file?.basename ?? 'MDX Preview', 'Preparing print view...')
 
     if (this._mode === 'source') {
       this._mode = 'preview'
@@ -324,9 +338,9 @@ export class mdxPreview extends TextFileView {
       this.cancelScheduledRender()
       const rendered = await this.renderPreview()
       if (!rendered) throw new Error('Preview iframe is not ready')
-      this.requestPrintSnapshot(printWindow)
+      this.requestPrintSnapshot(printFrame)
     } catch (err) {
-      this.showPrintStatusPage(printWindow, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
+      this.showPrintStatusPage(printFrame, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
     }
   }
@@ -665,6 +679,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.removePrintFrame()
     this._dataUrlCache.clear()
     this.editorEl = null
   }

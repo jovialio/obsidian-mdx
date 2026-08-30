@@ -3,6 +3,7 @@ import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import type { CodeHikeConfig } from 'codehike/mdx'
 import esbuild from 'esbuild'
+import { readFile } from 'fs/promises'
 
 let rendererScript = ''
 let mermaidRendererScript = ''
@@ -529,6 +530,81 @@ window.addEventListener('message', (event) => {
     expect(html).not.toContain('onerror')
     expect(html).not.toContain('javascript:alert')
     expect(html).not.toContain('<iframe')
+  })
+
+  test('host print path keeps PR 22 scanner invariants', async () => {
+    const [mdxPreviewSource, printSnapshotSource, rendererSource] = await Promise.all([
+      readFile('src/mdxPreview.tsx', 'utf8'),
+      readFile('src/printSnapshot.ts', 'utf8'),
+      readFile('src/renderer.tsx', 'utf8'),
+    ])
+    const hostAndPrintSources = `${mdxPreviewSource}\n${printSnapshotSource}\n${rendererSource}`
+
+    expect(hostAndPrintSources).not.toContain('document.write')
+    expect(hostAndPrintSources).not.toContain('activeWindow.open')
+    expect(hostAndPrintSources).not.toContain('window.open')
+    expect(hostAndPrintSources).not.toContain('printWindow')
+
+    expect(mdxPreviewSource).toContain("createEl('iframe'")
+    expect(mdxPreviewSource).toContain("allow-same-origin allow-modals")
+    expect(mdxPreviewSource).not.toContain('allow-scripts allow-same-origin')
+  })
+
+  test('sanitized print HTML loads into a no-script print frame', async ({ page }) => {
+    await page.goto('about:blank')
+    await page.addScriptTag({ content: printSnapshotScript })
+
+    const result = await page.evaluate(
+      (maliciousHtml) =>
+        new Promise<{ printed: boolean; scriptCount: number; badRan: boolean; sandbox: string }>((resolve, reject) => {
+          const api = (
+            window as unknown as Window & {
+              printSnapshot: { decoratePrintSnapshotHtml: (html: string, title: string) => string }
+            }
+          ).printSnapshot
+          const printFrame = document.createElement('iframe')
+          printFrame.setAttribute('sandbox', 'allow-same-origin allow-modals')
+          const url = URL.createObjectURL(
+            new Blob([api.decoratePrintSnapshotHtml(maliciousHtml, 'Frame print')], { type: 'text/html' }),
+          )
+          const timeout = window.setTimeout(() => reject(new Error('timed out waiting for print frame')), 30_000)
+
+          printFrame.addEventListener(
+            'load',
+            () => {
+              window.clearTimeout(timeout)
+              URL.revokeObjectURL(url)
+              const doc = printFrame.contentDocument
+              const win = printFrame.contentWindow as (Window & { __bad?: boolean }) | null
+              if (!doc || !win) {
+                reject(new Error('print frame was not readable'))
+                return
+              }
+
+              let printed = false
+              win.print = () => {
+                printed = true
+              }
+              win.print()
+              resolve({
+                printed,
+                scriptCount: doc.querySelectorAll('script').length,
+                badRan: win.__bad === true,
+                sandbox: printFrame.getAttribute('sandbox') ?? '',
+              })
+            },
+            { once: true },
+          )
+          printFrame.src = url
+          document.body.appendChild(printFrame)
+        }),
+      '<!DOCTYPE html><html><body><script>window.__bad = true</script><button onclick="window.__bad = true">Bad</button><h1>Print me</h1></body></html>',
+    )
+
+    expect(result.printed).toBe(true)
+    expect(result.scriptCount).toBe(0)
+    expect(result.badRan).toBe(false)
+    expect(result.sandbox).toBe('allow-same-origin allow-modals')
   })
 
   test('shows error message when __mdxRun is not defined', async ({ page }) => {
