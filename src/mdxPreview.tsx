@@ -51,6 +51,7 @@ type PrintSnapshotResponse = {
 
 const printReadyTimeoutMs = 2500
 const printFrameLoadTimeoutMs = 1500
+const printErrorFrameCleanupMs = 10_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -128,6 +129,7 @@ export class mdxPreview extends TextFileView {
       this.iframe.remove()
       this.iframe = null
     }
+    this.removePrintFrame()
     this._dataUrlCache.clear()
     this.editorEl = null
   }
@@ -158,6 +160,12 @@ export class mdxPreview extends TextFileView {
     if (!this._printFrame) return
     this._printFrame.remove()
     this._printFrame = null
+  }
+
+  private schedulePrintFrameRemoval(printFrame: HTMLIFrameElement, delayMs = printErrorFrameCleanupMs): void {
+    window.setTimeout(() => {
+      if (this._printFrame === printFrame) this.removePrintFrame()
+    }, delayMs)
   }
 
   private createPrintFrame(): HTMLIFrameElement {
@@ -270,6 +278,7 @@ export class mdxPreview extends TextFileView {
         'MDX Preview',
         'A newer print request replaced this one.',
       )
+      this.schedulePrintFrameRemoval(this._pendingPrintSnapshot.printFrame)
       this._pendingPrintSnapshot = null
     }
 
@@ -283,6 +292,7 @@ export class mdxPreview extends TextFileView {
         this._pendingPrintSnapshot = null
       }
       this.showPrintStatusPage(printFrame, 'MDX Preview', 'The MDX preview was not ready to print.')
+      this.schedulePrintFrameRemoval(printFrame)
       new Notice('MDX Preview: preview was not ready to print.', 5000)
     }, 6000)
 
@@ -305,6 +315,7 @@ export class mdxPreview extends TextFileView {
 
     if (data.error) {
       this.showPrintStatusPage(pending.printFrame, 'MDX Preview', `Unable to prepare print view: ${String(data.error)}`)
+      this.schedulePrintFrameRemoval(pending.printFrame)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
       return
     }
@@ -315,6 +326,7 @@ export class mdxPreview extends TextFileView {
     )
       .then(() => this.printPreparedFrame(pending.printFrame))
       .catch(() => {
+        this.schedulePrintFrameRemoval(pending.printFrame, 0)
         new Notice('MDX Preview: unable to open print dialog.', 5000)
       })
   }
@@ -346,6 +358,7 @@ export class mdxPreview extends TextFileView {
       this.requestPrintSnapshot(printFrame)
     } catch (err) {
       this.showPrintStatusPage(printFrame, 'MDX Preview', `Unable to prepare print view: ${String(err)}`)
+      this.schedulePrintFrameRemoval(printFrame)
       new Notice('MDX Preview: unable to prepare print view.', 5000)
     }
   }
