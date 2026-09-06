@@ -21,7 +21,7 @@ Most MDX-related plugins for Obsidian only handle **editing** — they register 
 - **Session consent gate** — you confirm once per session before any MDX JavaScript runs
 - **Offline** — the renderer is bundled at build time; no CDN calls are made at runtime
 - **Local image previews** — markdown and JSX images stored in the vault, including project-style `/images/...` paths backed by a nearby `public/` folder, render in desktop and mobile preview
-- **Print / Save as PDF** — export the current rendered MDX through Obsidian's print dialog using a static, sanitized snapshot of the preview
+- **Print / Save as PDF** — export the current rendered MDX through Obsidian desktop's print dialog using a static, sanitized snapshot of the preview; the plugin explains that this action is unavailable on mobile
 - **Auto-open** — `.mdx` files open directly in the preview view, no command palette step needed
 - **Debounced live reload** — preview updates 400 ms after you stop typing
 
@@ -42,7 +42,7 @@ Once listed, search for **MDX Preview** in **Settings → Community Plugins → 
 1. Create or open any file with a `.mdx` extension — it opens automatically in the preview view.
 2. On first open, click **Enable MDX Preview** in the consent banner. MDX files contain executable JavaScript; the plugin asks once per session before rendering.
 3. Use the **pencil / book toggle** in the top-right of the tab to switch between the rendered preview and an editable source view. Edits are saved to the file automatically.
-4. Use the **printer** action to open the system print dialog from a static print view, then print or save to PDF.
+4. On Obsidian desktop, use the **printer** action to open the system print dialog from a static print view, then print or save to PDF. On mobile, the action shows a desktop-only notice.
 
 ### Code Hike example
 
