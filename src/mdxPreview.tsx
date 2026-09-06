@@ -1,4 +1,4 @@
-import { Notice, TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
+import { Notice, Platform, TextFileView, TFile, WorkspaceLeaf, normalizePath, parseYaml, setIcon } from 'obsidian'
 import { compile } from '@mdx-js/mdx'
 import { remarkCodeHike, recmaCodeHike } from 'codehike/mdx'
 import type { CodeHikeConfig } from 'codehike/mdx'
@@ -332,6 +332,11 @@ export class mdxPreview extends TextFileView {
   }
 
   private async printCurrentMdx(): Promise<void> {
+    if (Platform.isMobile) {
+      new Notice('Print / Save as PDF is available in Obsidian desktop only.', 5000)
+      return
+    }
+
     if (!consentGiven) {
       this.showConsentBanner()
       new Notice('Enable MDX Preview before printing.', 5000)

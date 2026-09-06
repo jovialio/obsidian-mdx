@@ -553,6 +553,18 @@ window.addEventListener('message', (event) => {
     expect(mdxPreviewSource).not.toContain('allow-scripts allow-same-origin')
   })
 
+  test('print action tells mobile users that printing needs Obsidian desktop', async () => {
+    const mdxPreviewSource = await readFile('src/mdxPreview.tsx', 'utf8')
+
+    const mobileGuard = mdxPreviewSource.indexOf('if (Platform.isMobile)')
+    const consentGuard = mdxPreviewSource.indexOf('if (!consentGiven)')
+
+    expect(mdxPreviewSource).toContain('Platform')
+    expect(mobileGuard).toBeGreaterThan(-1)
+    expect(consentGuard).toBeGreaterThan(mobileGuard)
+    expect(mdxPreviewSource).toContain('Print / Save as PDF is available in Obsidian desktop only.')
+  })
+
   test('sanitized print HTML loads into a no-script print frame', async ({ page }) => {
     await page.goto('about:blank')
     await page.addScriptTag({ content: printSnapshotScript })
